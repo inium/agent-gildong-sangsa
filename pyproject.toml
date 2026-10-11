@@ -12,13 +12,14 @@ dependencies = [
     "langchain-postgres>=0.0.19",
     "langgraph>=1.2.14",
     "pre-commit>=4.6.2",
+    "prompt-toolkit>=3.0.53",
     "python-dotenv>=1.2.4",
     "uvicorn>=0.54.0",
 ]
 
-[project.scripts]
-workspace = "workspace:main"
+[tool.uv.build-backend]
+module-name = "agent"
 
-[build-system]
-requires = ["uv_build>=0.13.0,<0.14.0"]
-build-backend = "uv_build"
+[project.scripts]
+agent = "agent:main:main"
+
