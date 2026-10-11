@@ -3,7 +3,7 @@
     "editor.defaultFormatter": "ms-python.black-formatter",
     "editor.formatOnSave": true
   },
-  "conventionalCommits.scopes": ["설정", "Agent", "패키지", "Tool"],
+  "conventionalCommits.scopes": ["설정", "Agent", "패키지", "Tool", "RAG"],
   "conventionalCommits.gitmoji": true,
   "conventionalCommits.emojiFormat": "emoji"
 }
