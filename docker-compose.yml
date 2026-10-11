@@ -1,0 +1,39 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: agent-gildong-sangsa
+    image: gildong-sangsa/agent:dev
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+    ports:
+      - "18000:8000"
+    init: true
+    command: sh -c "uv lock && uv sync --no-dev && exec sleep infinity"
+    # for fastapi
+    # command: sh -c "uv sync --no-dev && exec uvicorn workspace.main:app --host 0.0.0.0 --port 8000"
+    networks:
+      - agent-gildong-sangsa
+  db:
+    image: pgvector/pgvector:pg18-trixie
+    container_name: agent-gildong-sangsa-db
+    restart: always
+    ports:
+      - "15432:5432"
+    volumes:
+      - postgres-gildong-sangsa:/var/lib/postgresql
+    environment:
+      - POSTGRES_USER=${PG_USERNAME}
+      - POSTGRES_PASSWORD=${PG_PASSWORD}
+      - POSTGRES_DB=${PG_DATABASE}
+    networks:
+      - agent-gildong-sangsa
+
+networks:
+  agent-gildong-sangsa:
+    driver: bridge
+
+volumes:
+  postgres-gildong-sangsa:
