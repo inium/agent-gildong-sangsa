@@ -10,7 +10,21 @@ from langchain_core.documents import Document
 from langchain_pymupdf4llm import PyMuPDF4LLMLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-""""""
+"""길동상사의 PDF 문서를 임베딩해 PostgreSQL 벡터 저장소에 적재하는 스크립트입니다.
+
+처리 과정:
+1. .env와 환경 변수의 PG_* 설정으로 PostgreSQL 연결 URL을 생성합니다.
+2. 취업규칙, 복리후생 규정, 출장여비 규정, 쇼핑몰 CS 매뉴얼의 파일 경로와
+   저장할 컬렉션 이름을 지정합니다. 상대 경로는 이 파일의 디렉터리를 기준으로 합니다.
+3. PyMuPDF4LLMLoader로 각 PDF의 내용을 읽고, tiktoken 인코딩을 기준으로
+   최대 1000토큰, 겹침 200토큰의 청크로 분할합니다.
+4. OpenAIEmbeddings로 청크 텍스트의 임베딩을 생성하고, PGVector를 통해
+   문서와 메타데이터를 파일별 컬렉션에 저장합니다. 메타데이터는 JSONB를 사용합니다.
+5. 파일별 처리 순번과 전체 완료 메시지를 출력합니다.
+
+직접 실행하면 main()이 호출됩니다. 실행에는 PDF 파일, OpenAI API 인증 정보와
+pgvector를 사용할 수 있는 PostgreSQL 데이터베이스가 필요합니다.
+"""
 
 
 def pg_connection_str() -> str:
