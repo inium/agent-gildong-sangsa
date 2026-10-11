@@ -17,7 +17,8 @@
         "vivaxy.vscode-conventional-commits",
         "eamodio.gitlens",
         "ms-ossdata.vscode-pgsql",
-        "tomoki1207.pdf"
+        "tomoki1207.pdf",
+        "tamasfe.even-better-toml"
       ],
       "settings": {
         "python.defaultInterpreterPath": "/opt/venv/bin/python"
