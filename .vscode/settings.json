@@ -1,6 +1,9 @@
 {
-    "[python]": {
-        "editor.defaultFormatter": "ms-python.black-formatter",
-        "editor.formatOnSave": true
-    }
+  "[python]": {
+    "editor.defaultFormatter": "ms-python.black-formatter",
+    "editor.formatOnSave": true
+  },
+  "conventionalCommits.scopes": ["설정", "Agent", "패키지"],
+  "conventionalCommits.gitmoji": true,
+  "conventionalCommits.emojiFormat": "emoji"
 }
