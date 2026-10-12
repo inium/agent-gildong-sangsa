@@ -84,6 +84,11 @@ def pdf_text_splitter(
 
     documents = text_splitter.split_documents(data)
 
+    for document in documents:
+        source = document.metadata.get("source")
+        if source is None or not str(source).strip():
+            document.metadata["source"] = Path(path).name
+
     return documents
 
 
