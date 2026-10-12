@@ -6,6 +6,8 @@ OpenAI 모델과 LangChain 에이전트를 연결하고, 등록된 도구를 사
 ## 제공 기능
 
 - **국가별 현재 날짜·시간 조회**: `get_current_time` 도구로 현지 시간을 확인합니다.
+- **분야별 RAG 검색**: 취업규칙, 복리후생, 출장여비, 쇼핑몰 CS 매뉴얼을 검색합니다.
+- **Markdown 답변 출력**: Rich로 제목, 목록, 표 등 Markdown 형식을 터미널에 표시합니다.
 - **한국어 콘솔 대화**: `You>`로 입력하고 `길동이>`로 답변을 받습니다.
 - **대화 맥락 유지**: LangGraph의 `InMemorySaver`로 실행 중 대화 맥락을 유지합니다.
   프로그램을 종료하면 대화 맥락은 사라집니다.
@@ -14,15 +16,24 @@ OpenAI 모델과 LangChain 에이전트를 연결하고, 등록된 도구를 사
   처리할 도구가 없으면 “현재 제공된 도구로는 해당 내용을 확인할 수 없습니다.”라고
   안내하도록 설정되어 있습니다. 이 규칙은 프롬프트 기반이며 코드로 강제하지 않습니다.
 
-현재 에이전트에 등록된 도구는 시간 조회 도구 하나입니다.
-PostgreSQL/pgvector 개발 환경은 포함되어 있지만, 사내 문서 검색이나 DB 조회는
-이 버전의 에이전트에 연결되어 있지 않습니다.
+에이전트에는 시간 조회 도구와 네 개의 문서 검색 도구가 등록되어 있습니다.
+문서 검색은 PostgreSQL/pgvector의 컬렉션별 Retriever를 사용하며,
+검색 결과를 바탕으로 메인 에이전트가 답변합니다. 분야별 별도 모델은 호출하지 않습니다.
+
+| 분야 | 도구 | 컬렉션 |
+| --- | --- | --- |
+| 현재 시간 | `get_current_time` | — |
+| 취업규칙 | `gd_hr_rules_of_employment` | `rules_of_employment` |
+| 복리후생 | `gd_hr_welfare_of_employment` | `welfare_of_employment` |
+| 출장여비 | `gd_hr_travel_expenses_of_employment` | `travel_expenses_of_employment` |
+| 쇼핑몰 CS | `gd_mall_shopping_cs_manual` | `shopping_cs_manual` |
 
 ## 실행 환경
 
 - Python 3.14 이상 (개발 컨테이너: 3.14.7)
 - uv
 - OpenAI API 키
+- 문서 저장·검색에 사용할 PostgreSQL + pgvector
 - 컨테이너 개발 시 Docker Compose와 VS Code Dev Containers 확장
 
 ## 환경 변수
@@ -45,12 +56,15 @@ cp .env.example .env
 | `PG_USERNAME`    | 데이터베이스 사용자   | `root`                    |
 | `PG_PASSWORD`    | 데이터베이스 비밀번호 | `password`                |
 
-`PG_*` 변수는 DB 개발 환경용입니다. 현재 콘솔 에이전트는 DB를 조회하지 않습니다.
+`PG_*` 변수는 PDF 적재와 에이전트의 문서 검색에 사용됩니다.
+컨테이너 밖에서 Compose DB에 접속할 때는 `PG_HOST=localhost`, `PG_PORT=15432`로 설정하세요.
+대화 모델은 `OPENAI_MODEL`로 설정하며, 임베딩은 적재·검색 모두 `OpenAIEmbeddings()` 기본 모델을 사용합니다.
+임베딩 모델을 변경한다면 양쪽 설정을 맞추고 문서를 다시 임베딩해야 합니다.
 `.env`는 Git에서 제외되어 있습니다.
 
 ## 로컬 실행
 
-프로젝트 루트에서 의존성을 설치하고 에이전트를 실행합니다.
+프로젝트 루트에서 의존성을 설치합니다. DB를 준비하고 아래 PDF 문서 적재를 완료한 후 에이전트를 실행하세요.
 
 ```bash
 uv sync
@@ -73,7 +87,7 @@ uv run python -m agent.main
 1. `.env`를 준비하고 API 키를 입력합니다.
 2. VS Code에서 프로젝트 폴더를 엽니다.
 3. 명령 팔레트에서 `Dev Containers: Reopen Folder in Container`를 실행합니다.
-4. 컨테이너 터미널에서 실행합니다.
+4. 컨테이너 터미널에서 아래 PDF 문서 적재를 완료한 후 에이전트를 실행합니다.
 
 ```bash
 PYTHONPATH=src uv run python -m agent.main
@@ -96,6 +110,38 @@ docker compose exec app sh -c 'PYTHONPATH=src uv run python -m agent.main'
 
 DB 데이터는 `postgres-gildong-sangsa` 볼륨에 저장됩니다.
 
+## PDF 문서 적재
+
+`resources/`에 아래 PDF 파일을 준비합니다.
+
+| 파일 | 저장 컬렉션 |
+| --- | --- |
+| `1_취업규칙_길동상사.pdf` | `rules_of_employment` |
+| `2_복리후생_규정_길동상사.pdf` | `welfare_of_employment` |
+| `3_출장여비_규정_길동상사.pdf` | `travel_expenses_of_employment` |
+| `4_쇼핑몰_CS_실무_매뉴얼_길동상사.pdf` | `shopping_cs_manual` |
+
+프로젝트 루트에서 실행합니다. DB가 실행 중이어야 합니다.
+
+```bash
+uv run python src/doc-importer/main.py
+```
+
+Compose 환경에서는 다음 명령을 사용합니다.
+
+```bash
+docker compose exec app uv run python src/doc-importer/main.py
+```
+
+적재 과정은 PDF 로드 → 토큰 기준 청크 분할 → OpenAI 임베딩 생성 → 컬렉션별 저장입니다.
+기본 분할 설정은 `chunk_size=1000`, `chunk_overlap=200`, `encoding_name="cl100k_base"`입니다.
+파일별로 `1 of 4 완료`와 같은 진행 상황이 표시됩니다.
+현재 적재 코드는 중복 제거 없이 문서를 추가하므로, 같은 파일을 다시 실행하면 중복 저장될 수 있습니다.
+
+검색 도구는 `similarity` 방식으로 관련 청크를 최대 4개 반환하며,
+각 청크를 출처(`metadata["source"]`)와 본문이 포함된 `<document>` 형식으로 전달합니다.
+문서에는 `source` 메타데이터가 필요합니다. 검색 결과에 답변 근거가 있는지는 에이전트가 판단합니다.
+
 ## 사용 방법
 
 실행 후 자연어로 질문합니다.
@@ -104,6 +150,10 @@ DB 데이터는 `postgres-gildong-sangsa` 볼륨에 저장됩니다.
 You> 한국은 지금 몇 시야?
 You> 일본의 현재 날짜와 시간을 알려줘
 You> America/New_York의 현재 시간을 알려줘
+You> 연차휴가 사용 기준을 알려줘
+You> 복리후생 지원 대상과 신청 방법을 알려줘
+You> 출장 숙박비 정산 기준은 무엇이야?
+You> 쇼핑몰 반품 요청은 어떻게 처리해야 해?
 ```
 
 시간 도구는 한국, 일본, 중국, 인도, 영국, 독일, 싱가포르의 국가명과 코드를 지원합니다.
@@ -126,9 +176,19 @@ You> America/New_York의 현재 시간을 알려줘
 ├── docker-compose.yml              # 앱 및 DB 서비스
 ├── pyproject.toml                  # 의존성 및 프로젝트 설정
 ├── uv.lock                         # 의존성 잠금 파일
-└── src/agent/
-    ├── main.py                     # 콘솔 입력 및 에이전트 구성
-    └── tools/datetime.py           # 국가별 현재 시간 조회 도구
+├── resources/                      # 적재할 PDF 문서
+└── src/
+    ├── doc-importer/main.py        # PDF 분할·임베딩·DB 적재
+    └── agent/
+        ├── main.py                # 콘솔 입력, Markdown 출력 및 에이전트 구성
+        ├── config/vector_store.py # PostgreSQL 연결 및 PGVector 생성
+        └── tools/
+            ├── __init__.py        # 도구 내보내기
+            ├── common/datetime.py # 현재 시간 조회
+            ├── hr/rules.py        # 취업규칙 검색
+            ├── hr/welfare.py      # 복리후생 검색
+            ├── hr/travel.py       # 출장여비 검색
+            └── mall/customer.py   # 쇼핑몰 CS 검색
 ```
 
 ## 개발 검사
