@@ -9,11 +9,9 @@ from langchain.agents import create_agent
 from langgraph.checkpoint.memory import InMemorySaver
 from langchain.chat_models import init_chat_model
 from agent.tools import (
-    get_current_time,
-    gd_hr_rules_of_employment,
-    gd_hr_travel_expenses_of_employment,
-    gd_hr_welfare_of_employment,
-    gd_mall_shopping_cs_manual,
+    CurrentTimeTool,
+    HumanResourceTool,
+    ShoppingMallCsTool,
 )
 
 
@@ -56,11 +54,9 @@ def main() -> None:
     agent = create_agent(
         model=model,
         tools=[
-            get_current_time,  # 현재 시간 및 변환 도구
-            gd_hr_rules_of_employment(),  # 취업규칙
-            gd_hr_travel_expenses_of_employment(),  # 출장여비
-            gd_hr_welfare_of_employment(),  # 복리후생
-            gd_mall_shopping_cs_manual(),  # 쇼핑몰 CS 매뉴얼
+            CurrentTimeTool().as_tool(),  # 현재 시간 및 변환 도구
+            *HumanResourceTool().as_tools(),  # 취업규칙·복리후생·출장여비
+            ShoppingMallCsTool().as_tool(),  # 쇼핑몰 CS 매뉴얼
         ],
         system_prompt=SYSTEM_PROMPT,
         # system_prompt = (
