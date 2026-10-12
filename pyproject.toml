@@ -16,6 +16,7 @@ dependencies = [
     "pre-commit>=4.6.2",
     "prompt-toolkit>=3.0.53",
     "python-dotenv>=1.2.4",
+    "rich>=15.0.0",
     "uvicorn>=0.54.0",
 ]
 
