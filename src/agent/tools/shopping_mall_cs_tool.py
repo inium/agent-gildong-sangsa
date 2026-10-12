@@ -10,6 +10,9 @@ class ShoppingMallCsTool(PgVectorStore):
     # RAG collection
     collection: str = "shopping_cs_manual"
 
+    # RAG 상위 k개 문서 검색
+    k: int = 4
+
     # Agent Tool Name
     tool_name: str = "gd_mall_shopping_cs_manual"
 
