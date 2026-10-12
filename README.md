@@ -169,6 +169,9 @@ You> 쇼핑몰 반품 요청은 어떻게 처리해야 해?
 ```text
 .
 ├── .devcontainer/devcontainer.json  # VS Code 개발 컨테이너 설정
+├── .agents/skills/                  # pr, code-review, issue 작업 스킬
+├── .github/                        # PR 및 버그·기능 요청 템플릿
+├── AGENTS.md                       # 저장소 전체의 AI 작업 지침
 ├── .env.example                    # 환경 변수 예제
 ├── .pre-commit-config.yaml         # 코드 및 커밋 메시지 검사
 ├── .vscode/settings.json           # 포맷터 및 커밋 작성 설정
@@ -208,6 +211,43 @@ uv run pre-commit run --all-files
 
 검사 항목은 YAML/TOML 구문, 병합 충돌 표시, 파일 끝 개행, 줄 끝 공백,
 Black 포맷과 Conventional Commits 메시지 형식입니다.
+
+## AI 작업 지침과 스킬
+
+[AGENTS.md](AGENTS.md)는 저장소 전체에 적용되는 AI 작업 지침입니다.
+프로젝트 구조, 코드·docstring 작성 규칙, RAG 도구 연결과 임베딩 일치,
+검증 방법 및 GitHub 작업 범위를 정의합니다. 개발 방식이 변경되면 이 지침도 함께 갱신합니다.
+
+반복 작업의 절차는 `.agents/skills/`에 프로젝트 스킬로 관리합니다.
+
+| 스킬 | 역할 | 파일 |
+| --- | --- | --- |
+| `pr` | 변경 검토, PR 제목·본문 작성, 요청받은 PR 생성·수정 | [SKILL.md](.agents/skills/pr/SKILL.md) |
+| `code-review` | 버그, 회귀 위험, RAG 근거·출처 처리와 DB 설정 검토 | [SKILL.md](.agents/skills/code-review/SKILL.md) |
+| `issue` | 버그·기능 요청 정리, 요청받은 이슈 생성·수정 | [SKILL.md](.agents/skills/issue/SKILL.md) |
+
+프로젝트 스킬을 지원하는 AI 도구에서 다음과 같이 요청할 수 있습니다.
+
+```text
+$pr 현재 브랜치 변경으로 PR 제목과 본문을 작성해줘
+$code-review 현재 변경사항의 버그와 회귀 위험을 검토해줘
+$issue 문서 검색 오류를 버그 이슈 문안으로 정리해줘
+```
+
+스킬은 작업 절차를 정의합니다. 실제 GitHub 작업에는 인증된 `gh` CLI 또는
+연결된 GitHub 도구와 저장소 권한이 필요합니다. 문안 작성과 실제 생성은 요청 범위에 따라 구분합니다.
+
+## GitHub 템플릿
+
+| 템플릿 | 작성 항목 | 파일 |
+| --- | --- | --- |
+| PR | 변경 목적, 주요 변경, 관련 이슈, 검증 결과, 영향·제한 사항 | [PR 템플릿](.github/pull_request_template.md) |
+| 버그 보고 | 문제 설명, 재현 방법, 기대·실제 동작, 환경, 로그, RAG 관련 정보 | [버그 템플릿](.github/ISSUE_TEMPLATE/bug_report.md) |
+| 기능 요청 | 해결할 문제, 원하는 동작, 작업 범위, 완료 조건, RAG 요구사항 | [기능 요청 템플릿](.github/ISSUE_TEMPLATE/feature_request.md) |
+
+템플릿이 기본 브랜치에 반영되면 GitHub에서 새 PR이나 이슈를 작성할 때 사용할 수 있습니다.
+해당하는 항목만 작성하고 불필요한 항목은 삭제합니다. 검증 결과에는 실제 DB/OpenAI
+호출과 모의 검증을 구분하며, API 키·토큰·비밀번호와 개인정보는 포함하지 않습니다.
 
 ## 커밋 규칙
 
