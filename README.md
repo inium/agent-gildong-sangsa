@@ -16,17 +16,28 @@ OpenAI 모델과 LangChain 에이전트를 연결하고, 등록된 도구를 사
   처리할 도구가 없으면 “현재 제공된 도구로는 해당 내용을 확인할 수 없습니다.”라고
   안내하도록 설정되어 있습니다. 이 규칙은 프롬프트 기반이며 코드로 강제하지 않습니다.
 
-에이전트에는 시간 조회 도구와 네 개의 문서 검색 도구가 등록되어 있습니다.
+에이전트에는 소개 도구, 시간 조회 도구와 네 개의 문서 검색 도구가 등록되어 있습니다.
 문서 검색은 PostgreSQL/pgvector의 컬렉션별 Retriever를 사용하며,
 검색 결과를 바탕으로 메인 에이전트가 답변합니다. 분야별 별도 모델은 호출하지 않습니다.
 
 | 분야 | 도구 | 컬렉션 |
 | --- | --- | --- |
+| 길동이 소개·사용 방법 | `introduce_gildong` | — |
 | 현재 시간 | `get_current_time` | — |
 | 취업규칙 | `gd_hr_rules_of_employment` | `rules_of_employment` |
 | 복리후생 | `gd_hr_welfare_of_employment` | `welfare_of_employment` |
 | 출장여비 | `gd_hr_travel_expenses_of_employment` | `travel_expenses_of_employment` |
 | 쇼핑몰 CS | `gd_mall_shopping_cs_manual` | `shopping_cs_manual` |
+
+벡터 저장소의 공통 설정은 `PgVectorStore`에서 관리합니다.
+`HumanResourceTool`과 `ShoppingMallCsTool`이 이를 상속해 컬렉션별 검색 도구를 생성합니다.
+쇼핑몰 검색 도구는 `ShoppingMallCsTool().as_tool()`로 생성하며,
+에이전트에 노출되는 이름은 `gd_mall_shopping_cs_manual`입니다.
+
+소개 도구는 에이전트에 등록된 도구의 이름과 `description`을 읽어 기능을 안내합니다.
+`main.py`의 도구 목록에 기능을 추가하면 소개에도 반영되며, 소개 시 다른 도구를 실행하지 않습니다.
+시스템 프롬프트는 공통 선택 규칙만 관리하고, 분야별 사용 조건은 각 도구의
+`description`에 작성합니다. 도구를 추가할 때 프롬프트에 별도 목록을 추가할 필요가 없습니다.
 
 ## 실행 환경
 
@@ -68,19 +79,18 @@ cp .env.example .env
 
 ```bash
 uv sync
-PYTHONPATH=src uv run python -m agent.main
+uv run agent
 ```
 
 위 명령은 Linux/macOS 및 컨테이너의 셸 기준입니다. Windows PowerShell에서는
 다음과 같이 실행합니다.
 
 ```powershell
-$env:PYTHONPATH = "src"
-uv run python -m agent.main
+uv run agent
 ```
 
-현재 `pyproject.toml`에는 빌드 백엔드 선언이 없고 `agent` 실행 진입점이
-`agent:main:main`으로 지정되어 있으므로, 여기서는 소스 경로를 지정해 모듈을 직접 실행합니다.
+`uv_build`로 `src/agent` 패키지를 설치하고, `agent.main:main` 진입점으로
+`agent` 명령을 생성합니다. `uv run agent`는 실행 전에 의존성과 프로젝트를 동기화합니다.
 
 ## Dev Container 실행
 
@@ -90,7 +100,7 @@ uv run python -m agent.main
 4. 컨테이너 터미널에서 아래 PDF 문서 적재를 완료한 후 에이전트를 실행합니다.
 
 ```bash
-PYTHONPATH=src uv run python -m agent.main
+uv run agent
 ```
 
 컨테이너 시작 시 `uv lock`과 `uv sync --no-dev`가 실행되며, Python 환경은
@@ -100,7 +110,7 @@ VS Code 없이 Docker Compose로 실행할 수도 있습니다.
 
 ```bash
 docker compose up -d --build
-docker compose exec app sh -c 'PYTHONPATH=src uv run python -m agent.main'
+docker compose exec app uv run agent
 ```
 
 | 서비스 | 컨테이너 포트 | 호스트 포트 | 용도                                                 |
@@ -140,13 +150,15 @@ docker compose exec app uv run python src/doc-importer/main.py
 
 검색 도구는 `similarity` 방식으로 관련 청크를 최대 4개 반환하며,
 각 청크를 출처(`metadata["source"]`)와 본문이 포함된 `<document>` 형식으로 전달합니다.
-문서에는 `source` 메타데이터가 필요합니다. 검색 결과에 답변 근거가 있는지는 에이전트가 판단합니다.
+PDF 적재 시 `source`가 누락되면 파일명을 넣습니다. 기존 저장 문서에 출처가 없으면
+검색 결과에 `출처 정보 없음`을 표시하며, 원본 DB 문서는 변경하지 않습니다. 검색 결과에 답변 근거가 있는지는 에이전트가 판단합니다.
 
 ## 사용 방법
 
 실행 후 자연어로 질문합니다.
 
 ```text
+You> 길동이는 무엇을 할 수 있어?
 You> 한국은 지금 몇 시야?
 You> 일본의 현재 날짜와 시간을 알려줘
 You> America/New_York의 현재 시간을 알려줘
@@ -155,6 +167,10 @@ You> 복리후생 지원 대상과 신청 방법을 알려줘
 You> 출장 숙박비 정산 기준은 무엇이야?
 You> 쇼핑몰 반품 요청은 어떻게 처리해야 해?
 ```
+
+시간 도구는 `CurrentTimeTool` 클래스로 구현하며, `as_tool()`이 반환하는
+`get_current_time` 도구를 에이전트에 등록합니다. Python 코드에서는
+`CurrentTimeTool().get_current_time("한국")`으로 직접 사용할 수 있습니다.
 
 시간 도구는 한국, 일본, 중국, 인도, 영국, 독일, 싱가포르의 국가명과 코드를 지원합니다.
 다른 지역은 `Europe/Paris`처럼 IANA 시간대를 지정할 수 있습니다.
@@ -184,14 +200,16 @@ You> 쇼핑몰 반품 요청은 어떻게 처리해야 해?
     ├── doc-importer/main.py        # PDF 분할·임베딩·DB 적재
     └── agent/
         ├── main.py                # 콘솔 입력, Markdown 출력 및 에이전트 구성
-        ├── config/vector_store.py # PostgreSQL 연결 및 PGVector 생성
+        ├── __init__.py            # 설치 가능한 agent 패키지
+        ├── store/
+        │   ├── pg_vector_store.py # DB 연결과 벡터 저장소 기반 클래스
+        │   └── source_retriever.py # 검색 결과 출처 보정
         └── tools/
             ├── __init__.py        # 도구 내보내기
-            ├── common/datetime.py # 현재 시간 조회
-            ├── hr/rules.py        # 취업규칙 검색
-            ├── hr/welfare.py      # 복리후생 검색
-            ├── hr/travel.py       # 출장여비 검색
-            └── mall/customer.py   # 쇼핑몰 CS 검색
+            ├── current_time_tool.py    # 현재 시간 조회
+            ├── introduction_tool.py    # 등록된 도구 기반 소개
+            ├── human_resource_tool.py  # 취업규칙·복리후생·출장여비 검색
+            └── shopping_mall_cs_tool.py # 쇼핑몰 CS 검색
 ```
 
 ## 개발 검사
@@ -303,3 +321,25 @@ gitmoji의 포함 여부와 타입별 매핑은 문서 규칙이며 별도로 �
 참고: [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/),
 [gitmoji](https://gitmoji.dev/),
 [VS Code 확장 설정](https://github.com/vivaxy/vscode-conventional-commits#extension-configuration).
+
+## 인사 검색 도구 구성
+
+`src/agent/tools/human_resource_tool.py`의 `HumanResourceTool`에서 취업규칙,
+복리후생, 출장여비 검색을 관리합니다. `as_tools()`로 세 개의 도구를 생성해
+에이전트에 등록합니다. 분야별 컬렉션과 기존 도구 이름은 유지합니다.
+공통 검색 구현은 한 클래스에서 공유하면서 분야별 도구 이름과 설명은 구분합니다.
+
+에이전트의 도구 목록은 다음 형태로 구성합니다.
+
+```python
+tools = [
+    CurrentTimeTool().as_tool(),
+    *HumanResourceTool().as_tools(),
+    ShoppingMallCsTool().as_tool(),
+]
+tools.append(IntroductionTool(tools).as_tool())
+```
+
+새 도구는 이 목록에 등록하고 `tools/__init__.py`에서 내보냅니다.
+기능 소개는 등록된 도구에서 자동 생성되고, 시스템 프롬프트는 도구 설명과
+입력 스키마를 참고하도록 구성되어 있어 분야별 목록을 별도로 수정할 필요가 없습니다.
