@@ -18,7 +18,8 @@
         "eamodio.gitlens",
         "ms-ossdata.vscode-pgsql",
         "tomoki1207.pdf",
-        "tamasfe.even-better-toml"
+        "tamasfe.even-better-toml",
+        "mechatroner.rainbow-csv"
       ],
       "settings": {
         "python.defaultInterpreterPath": "/opt/venv/bin/python"
