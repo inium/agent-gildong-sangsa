@@ -1,6 +1,7 @@
 from langchain_core.prompts import PromptTemplate
 from langchain_core.tools import StructuredTool, create_retriever_tool
-from langchain_core.vectorstores import VectorStoreRetriever
+from langchain_core.retrievers import BaseRetriever
+from agent.store.source_retriever import SourceRetriever
 from agent.store.pg_vector_store import PgVectorStore
 
 
@@ -22,7 +23,7 @@ class ShoppingMallCsTool(PgVectorStore):
         shopping_cs_manual 컬렉션에 연결된 벡터 저장소에서 유사도 검색으로
         관련 문서 청크를 최대 4개 조회하도록 설정합니다. 검색된 각 청크는
         출처와 본문을 포함한 <document> 형식으로 에이전트에 전달합니다.
-        문서에는 source 메타데이터가 있어야 합니다.
+        누락된 출처와 페이지는 확인 불가 안내로 표시합니다.
 
         Returns:
             StructuredTool: 검색어를 입력받아 쇼핑몰 CS 매뉴얼의 관련 문서를 반환하는 도구입니다.
@@ -31,9 +32,13 @@ class ShoppingMallCsTool(PgVectorStore):
 
         # 검색된 각 문서를 어떤 형식으로 보여줄지 지정
         # {page_content}: 문서 본문 / {source}: 문서의 metadata["source"] 값
-        # 검색된 문서에 source 메타데이터가 없으면 현재 템플릿은 오류가 발생할 수 있음
+        # 누락된 출처와 페이지 정보는 SourceRetriever에서 보정합니다.
         DOCUMENT_PROMPT = PromptTemplate.from_template(
-            "<document>\n" "출처: {source}\n" "내용:\n{page_content}\n" "</document>"
+            "<document>\n"
+            "출처: {source}\n"
+            "PDF 페이지: {page_number}\n"
+            "내용:\n{page_content}\n"
+            "</document>"
         )
 
         # 에이전트에게 도구의 용도와 호출 조건을 설명
@@ -54,9 +59,10 @@ class ShoppingMallCsTool(PgVectorStore):
             name=self.tool_name,
             description=DESCRIPTION,
             document_prompt=DOCUMENT_PROMPT,
+            response_format="content_and_artifact",
         )
 
-    def __get_retriever(self, collection: str, k: int = 4) -> VectorStoreRetriever:
+    def __get_retriever(self, collection: str, k: int = 4) -> BaseRetriever:
         """쇼핑몰 CS 매뉴얼의 관련 문서를 검색하는 Retriever를 생성합니다.
 
         shopping_cs_manual 컬렉션에 연결된 벡터 저장소를 사용하며,
@@ -70,7 +76,7 @@ class ShoppingMallCsTool(PgVectorStore):
                 기본값은 4이며, 양의 정수를 지정하세요.
 
         Returns:
-            VectorStoreRetriever: invoke(query)로 관련 문서 목록을 조회할 수
+            BaseRetriever: invoke(query)로 관련 문서 목록을 조회할 수
                 있는 Retriever입니다. 답변 생성이나 결과 포맷팅은 수행하지 않습니다.
         """
         # Vector Store
@@ -81,4 +87,4 @@ class ShoppingMallCsTool(PgVectorStore):
             search_kwargs={"k": k},  # 상위 k개 문서 검색
         )
 
-        return retriever
+        return SourceRetriever(retriever=retriever)
