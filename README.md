@@ -156,6 +156,24 @@ docker compose exec app uv run python src/doc-importer/main.py
 | `embedding_model` | `OpenAIEmbeddings()` 객체의 모델 이름 |
 | 제목·작성자 등 | PDF 로더가 추출한 원본 메타데이터 |
 
+컬렉션 메타데이터는 `langchain_pg_collection.cmetadata`에 저장합니다.
+`files`에서 컬렉션의 표시 이름과 설명을 지정하고, 새 컬렉션을 생성할 때
+아래 값을 `collection_metadata`로 전달합니다.
+
+| 필드 | 값 |
+| --- | --- |
+| `name` | 표시 이름. 예: 취업규칙 |
+| `description` | 저장 문서의 범위와 용도 |
+| `created_at` | 컬렉션 생성 요청 시 한국 시간의 ISO 8601 문자열 |
+| `updated_at` | 새 컬렉션 생성 시 created_at과 같은 값 |
+
+현재 기존 컬렉션에 대한 별도 UPDATE 코드는 없습니다. 같은 컬렉션에 다시
+적재해도 `name`, `description`, `created_at`, `updated_at`은 자동 갱신되지 않습니다.
+기존 컬렉션의 메타데이터가 비어 있으면 재적재만으로 채워지지 않습니다.
+문서 청크는 계속 추가 저장되며, 컬렉션 날짜는 개별 청크의 임베딩 시각을 의미하지 않습니다.
+이 값들은 테이블의 날짜 컬럼이나 DB의 NOW() 기본값이 아니라 Python 코드가
+생성해 JSON에 넣는 문자열입니다.
+
 현재 `document_version`, `embedded_at`, `import_id`, `effective_date`는
 자동 생성하거나 추가하지 않습니다. PDF의 생성·수정 날짜는 임베딩 날짜나
 규정 시행일을 의미하지 않습니다. 이전 코드로 저장된 DB 문서의 메타데이터는

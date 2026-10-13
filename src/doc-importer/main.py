@@ -1,5 +1,7 @@
 import os
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
 from sqlalchemy.engine import URL
@@ -95,6 +97,8 @@ def add_document_to_vector_store(
     documents: list[Document],
     collection_name: str,
     connection: str,
+    name: str,
+    description: str,
 ) -> None:
     """문서를 OpenAI 임베딩으로 변환해 PostgreSQL 벡터 저장소에 추가합니다.
 
@@ -106,6 +110,12 @@ def add_document_to_vector_store(
         connection (str): PostgreSQL 접속에 사용할 SQLAlchemy 연결 URL입니다.
             pg_connection_str()의 반환값을 전달할 수 있습니다.
             비밀번호가 포함될 수 있으므로 로그에 출력하지 마세요.
+        name (str): 사용자에게 표시할 컬렉션 이름입니다.
+        description (str): 컬렉션의 문서 범위와 용도에 대한 설명입니다.
+
+    문서 저장 성공 후 컬렉션 메타데이터를 갱신합니다. 기존 created_at은
+    유지하며, 값이 없으면 최초 기록 시각을 사용합니다. 문서 저장과
+    메타데이터 갱신은 별도 트랜잭션입니다.
 
     Returns:
         None: 문서 저장을 수행하며 별도의 값을 반환하지 않습니다.
@@ -118,10 +128,18 @@ def add_document_to_vector_store(
             }
         )
 
+    now = datetime.now(ZoneInfo("Asia/Seoul")).isoformat(timespec="seconds")
+
     vector_store = PGVector(
         embeddings=embeddings,
         connection=connection,
         collection_name=collection_name,
+        collection_metadata={
+            "name": name,
+            "description": description,
+            "created_at": now,
+            "updated_at": now,
+        },
         use_jsonb=True,
     )
 
@@ -135,18 +153,26 @@ def main():
         {
             "path": "../../resources/취업규칙 - (주)길동상사.pdf",
             "collection_name": "rules_of_employment",
+            "name": "취업규칙",
+            "description": "길동상사의 근로시간, 휴가, 복무 및 인사 규정",
         },
         {
             "path": "../../resources/복리후생 규정 - (주)길동상사.pdf",
             "collection_name": "welfare_of_employment",
+            "name": "복리후생 규정",
+            "description": "직원 복지 혜택, 지원 조건 및 신청 절차",
         },
         {
             "path": "../../resources/출장여비 규정 - (주)길동상사.pdf",
             "collection_name": "travel_expenses_of_employment",
+            "name": "출장여비 규정",
+            "description": "출장 비용 지급 기준 및 정산 절차",
         },
         {
             "path": "../../resources/쇼핑몰 CS 실무 매뉴얼 - (주)길동상사.pdf",
             "collection_name": "shopping_cs_manual",
+            "name": "쇼핑몰 CS 매뉴얼",
+            "description": "주문, 배송, 교환, 반품 및 고객응대 절차",
         },
     ]
 
@@ -158,6 +184,8 @@ def main():
             documents,
             collection_name=file["collection_name"],
             connection=connection_str,
+            name=file["name"],
+            description=file["description"],
         )
 
         print(f"{index} of {len(files)} 완료")
