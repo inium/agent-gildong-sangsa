@@ -1,7 +1,6 @@
 from langchain_core.prompts import PromptTemplate
 from langchain_core.tools import StructuredTool, create_retriever_tool
-from langchain_core.retrievers import BaseRetriever
-from agent.store.source_retriever import SourceRetriever
+from langchain_core.vectorstores import VectorStoreRetriever
 from agent.store.pg_vector_store import PgVectorStore
 
 
@@ -22,8 +21,9 @@ class HumanResourceTool(PgVectorStore):
         """지정한 인사 문서 컬렉션의 Retriever를 에이전트용 도구로 변환합니다.
 
         유사도 검색으로 관련 청크를 최대 k개 조회하고, 각 청크의 출처와
-        본문을 <document> 형식으로 전달합니다. 검색 문서에는 source
-        메타데이터가 필요하며, 최종 답변은 호출한 에이전트가 생성합니다.
+        본문을 <document> 형식으로 전달합니다. 검색 문서에는 source와 page
+        메타데이터가 필요합니다. page는 0부터 시작하는 PDF 페이지 인덱스이며,
+        최종 답변은 호출한 에이전트가 생성합니다.
 
         Args:
             collection (str): 검색할 PGVector 컬렉션 이름입니다.
@@ -34,18 +34,19 @@ class HumanResourceTool(PgVectorStore):
                 양의 정수를 지정하세요.
 
         Returns:
-            StructuredTool: query를 입력받아 출처와 본문을 반환하는 검색 도구입니다.
+            StructuredTool: query를 입력받는 검색 도구입니다. content에는 출처·
+                페이지·본문을, artifact에는 원본 Document 목록을 반환합니다.
         """
 
         retriever = self.__get_retriever(collection=collection, k=k)
 
         # 검색된 각 문서를 어떤 형식으로 보여줄지 지정
         # {page_content}: 문서 본문 / {source}: 문서의 metadata["source"] 값
-        # 누락된 출처와 페이지 정보는 SourceRetriever에서 보정합니다.
+        # 검색 문서에는 템플릿에서 사용하는 출처와 페이지 메타데이터가 필요합니다.
         DOCUMENT_PROMPT = PromptTemplate.from_template(
             "<document>\n"
             "출처: {source}\n"
-            "PDF 페이지: {page_number}\n"
+            "PDF 페이지: {page}\n"
             "내용:\n{page_content}\n"
             "</document>"
         )
@@ -64,7 +65,7 @@ class HumanResourceTool(PgVectorStore):
         rules_of_employment 컬렉션에서 근로시간, 출퇴근, 휴일·휴가·연차,
         복무, 인사 및 징계 관련 내용을 유사도 검색합니다. 관련 문서 청크를
         최대 4개까지 출처와 본문이 포함된 형식으로 반환하도록 설정합니다.
-        검색 문서의 누락된 출처와 페이지는 확인 불가 안내로 표시합니다.
+        검색 문서에는 source와 page 메타데이터가 필요하며, page는 0부터 시작합니다.
 
         Returns:
             StructuredTool: gd_hr_rules_of_employment 이름으로 등록되는
@@ -95,7 +96,7 @@ class HumanResourceTool(PgVectorStore):
         welfare_of_employment 컬렉션에서 직원 복지 혜택, 지원 대상·금액,
         신청 및 지급 절차와 관련된 내용을 유사도 검색합니다. 관련 문서 청크를
         최대 4개까지 출처와 본문이 포함된 형식으로 반환하도록 설정합니다.
-        검색 문서의 누락된 출처와 페이지는 확인 불가 안내로 표시합니다.
+        검색 문서에는 source와 page 메타데이터가 필요하며, page는 0부터 시작합니다.
 
         Returns:
             StructuredTool: gd_hr_welfare_of_employment 이름으로 등록되는
@@ -127,7 +128,7 @@ class HumanResourceTool(PgVectorStore):
         travel_expenses_of_employment 컬렉션에서 교통비, 숙박비, 식비,
         일비의 지급 기준과 정산 절차를 유사도 검색합니다. 관련 문서 청크를
         최대 4개까지 출처와 본문이 포함된 형식으로 반환하도록 설정합니다.
-        검색 문서의 누락된 출처와 페이지는 확인 불가 안내로 표시합니다.
+        검색 문서에는 source와 page 메타데이터가 필요하며, page는 0부터 시작합니다.
 
         Returns:
             StructuredTool: gd_hr_travel_expenses_of_employment 이름으로
@@ -153,21 +154,20 @@ class HumanResourceTool(PgVectorStore):
             description=DESCRIPTION,
         )
 
-    def __get_retriever(self, collection: str, k: int = 4) -> BaseRetriever:
-        """쇼핑몰 CS 매뉴얼의 관련 문서를 검색하는 Retriever를 생성합니다.
+    def __get_retriever(self, collection: str, k: int = 4) -> VectorStoreRetriever:
+        """지정한 인사 문서 컬렉션의 관련 문서를 검색하는 Retriever를 생성합니다.
 
-        shopping_cs_manual 컬렉션에 연결된 벡터 저장소를 사용하며,
+        collection으로 지정한 벡터 저장소를 사용하며,
         유사도 검색으로 검색어와 관련된 문서 청크를 최대 k개 조회합니다.
 
         Args:
             collection (str): 검색할 PGVector 컬렉션 이름입니다.
-                예: "shopping_cs_manual". 현재 구현에서는 이 인자 대신
-                self.collection 값을 사용합니다.
+                전달된 컬렉션을 사용합니다.
             k (int): 검색 결과로 반환할 최대 문서 청크 수입니다.
                 기본값은 4이며, 양의 정수를 지정하세요.
 
         Returns:
-            BaseRetriever: invoke(query)로 관련 문서 목록을 조회할 수
+            VectorStoreRetriever: invoke(query)로 관련 문서 목록을 조회할 수
                 있는 Retriever입니다. 답변 생성이나 결과 포맷팅은 수행하지 않습니다.
         """
         # Vector Store
@@ -178,4 +178,4 @@ class HumanResourceTool(PgVectorStore):
             search_kwargs={"k": k},  # 상위 k개 문서 검색
         )
 
-        return SourceRetriever(retriever=retriever)
+        return retriever

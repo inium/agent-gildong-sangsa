@@ -1,4 +1,8 @@
 import os
+from pathlib import Path
+from collections.abc import Sequence
+from langchain_core.documents import Document
+from langchain_core.messages import BaseMessage, HumanMessage, ToolMessage
 from dotenv import load_dotenv
 from rich.console import Console
 from rich.markdown import Markdown
@@ -16,7 +20,41 @@ from agent.tools import (
 )
 
 
-def answer(answer: str) -> None:
+def collect_references(messages: Sequence[BaseMessage]) -> list[tuple[str, str]]:
+    """현재 질문에서 검색한 문서의 출처와 페이지를 중복 없이 수집합니다."""
+    start = next(
+        (
+            index + 1
+            for index in range(len(messages) - 1, -1, -1)
+            if isinstance(messages[index], HumanMessage)
+        ),
+        0,
+    )
+    references = []
+    for message in messages[start:]:
+        if not isinstance(message, ToolMessage) or message.status == "error":
+            continue
+        if not isinstance(message.artifact, list):
+            continue
+        for document in message.artifact:
+            if not isinstance(document, Document):
+                continue
+            source = Path(str(document.metadata.get("source") or "출처 정보 없음")).name
+            page_index = document.metadata.get("page")
+            page = (
+                str(page_index + 1)
+                if isinstance(page_index, int)
+                and not isinstance(page_index, bool)
+                and page_index >= 0
+                else "페이지 정보 없음"
+            )
+            reference = (source, page)
+            if reference not in references:
+                references.append(reference)
+    return references
+
+
+def answer(answer: str, references: list[tuple[str, str]] | None = None) -> None:
     """에이전트 답변 내용을 템플릿 내에 출력합니다."""
 
     console = Console()
@@ -24,6 +62,10 @@ def answer(answer: str) -> None:
     console.print()
     console.print("길동이> ")
     console.print(Markdown(answer))
+    if references:
+        console.print("\n검색된 참고 문서:")
+        for source, page in references:
+            console.print(f"- {source} · PDF 페이지: {page}", markup=False)
     console.print()
 
 
@@ -102,7 +144,10 @@ def main() -> None:
             {"messages": [{"role": "user", "content": user_input}]}, config=config
         )
 
-        answer(result["messages"][-1].content)
+        answer(
+            result["messages"][-1].content,
+            references=collect_references(result["messages"]),
+        )
 
 
 if __name__ == "__main__":
