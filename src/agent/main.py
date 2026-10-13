@@ -21,7 +21,7 @@ from agent.tools import (
 
 
 def collect_references(messages: Sequence[BaseMessage]) -> list[tuple[str, str]]:
-    """현재 질문에서 검색한 문서의 출처와 페이지를 중복 없이 수집합니다."""
+    """현재 질문의 문서 출처와 1부터 시작하는 표시용 페이지를 수집합니다."""
     start = next(
         (
             index + 1
