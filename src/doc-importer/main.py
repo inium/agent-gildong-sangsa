@@ -75,9 +75,12 @@ def pdf_text_splitter(
         list[Document]: 청크로 분할한 문서 목록입니다. 각 문서는 청크 텍스트를
             담은 page_content와 원본 문서에서 전달된 metadata를 포함합니다.
     """
-    loader = PyMuPDF4LLMLoader(path, model="single")
+    loader = PyMuPDF4LLMLoader(path, mode="page")
 
     data = loader.load()
+    for document in data:
+        # 로더의 page는 0부터 시작하며, 표시용 PDF 페이지 번호는 1부터 시작합니다.
+        document.metadata["page_number"] = document.metadata["page"] + 1
 
     text_splitter = RecursiveCharacterTextSplitter.from_tiktoken_encoder(
         chunk_size=chunk_size,
