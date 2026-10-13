@@ -1,5 +1,8 @@
 import os
+from datetime import datetime
 from pathlib import Path
+from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
 from sqlalchemy.engine import URL
@@ -93,7 +96,10 @@ def pdf_text_splitter(
 
 
 def add_document_to_vector_store(
-    documents: list[Document], collection_name: str, connection: str
+    documents: list[Document],
+    collection_name: str,
+    connection: str,
+    document_version: str,
 ) -> None:
     """문서를 OpenAI 임베딩으로 변환해 PostgreSQL 벡터 저장소에 추가합니다.
 
@@ -105,12 +111,30 @@ def add_document_to_vector_store(
         connection (str): PostgreSQL 접속에 사용할 SQLAlchemy 연결 URL입니다.
             pg_connection_str()의 반환값을 전달할 수 있습니다.
             비밀번호가 포함될 수 있으므로 로그에 출력하지 마세요.
+        document_version (str): 적재할 문서의 버전입니다. 예: "1.0".
+
+    각 청크에 문서 버전, 한국 시간의 작업 시작 시각(embedded_at),
+    임베딩 모델과 작업 ID(import_id)를 기록합니다. 작업 완료 시각이나
+    실패 이력을 별도로 저장하지 않습니다.
 
     Returns:
         None: 문서 저장을 수행하며 별도의 값을 반환하지 않습니다.
     """
+    embeddings = OpenAIEmbeddings()
+    embedded_at = datetime.now(ZoneInfo("Asia/Seoul")).isoformat(timespec="seconds")
+    import_id = str(uuid4())
+    for document in documents:
+        document.metadata.update(
+            {
+                "document_version": document_version,
+                "embedded_at": embedded_at,
+                "embedding_model": embeddings.model,
+                "import_id": import_id,
+            }
+        )
+
     vector_store = PGVector(
-        embeddings=OpenAIEmbeddings(),
+        embeddings=embeddings,
         connection=connection,
         collection_name=collection_name,
         use_jsonb=True,
@@ -126,18 +150,22 @@ def main():
         {
             "path": "../../resources/1_취업규칙_길동상사.pdf",
             "collection_name": "rules_of_employment",
+            "document_version": "1.0",
         },
         {
             "path": "../../resources/2_복리후생_규정_길동상사.pdf",
             "collection_name": "welfare_of_employment",
+            "document_version": "1.0",
         },
         {
             "path": "../../resources/3_출장여비_규정_길동상사.pdf",
             "collection_name": "travel_expenses_of_employment",
+            "document_version": "1.0",
         },
         {
             "path": "../../resources/4_쇼핑몰_CS_실무_매뉴얼_길동상사.pdf",
             "collection_name": "shopping_cs_manual",
+            "document_version": "1.0",
         },
     ]
 
@@ -149,6 +177,7 @@ def main():
             documents,
             collection_name=file["collection_name"],
             connection=connection_str,
+            document_version=file["document_version"],
         )
 
         print(f"{index} of {len(files)} 완료")
