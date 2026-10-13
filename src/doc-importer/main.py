@@ -114,7 +114,7 @@ def add_document_to_vector_store(
         connection (str): PostgreSQL 접속에 사용할 SQLAlchemy 연결 URL입니다.
             pg_connection_str()의 반환값을 전달할 수 있습니다.
             비밀번호가 포함될 수 있으므로 로그에 출력하지 마세요.
-        document_version (str): 적재할 문서의 버전입니다. 예: "1.0".
+        document_version (str): 적재할 문서의 버전입니다. 예: "20261013-192324".
 
     각 청크에 문서 버전, 한국 시간의 작업 시작 시각(embedded_at),
     임베딩 모델과 작업 ID(import_id)를 기록합니다. 작업 완료 시각이나
@@ -148,27 +148,28 @@ def add_document_to_vector_store(
 
 def main():
     connection_str = pg_connection_str()
+    document_version = datetime.now(ZoneInfo("Asia/Seoul")).strftime("%Y%m%d-%H%M%S")
 
     files = [
         {
-            "path": "../../resources/1_취업규칙_길동상사.pdf",
+            "path": "../../resources/취업규칙 - (주)길동상사.pdf",
             "collection_name": "rules_of_employment",
-            "document_version": "1.0",
+            "document_version": document_version,
         },
         {
-            "path": "../../resources/2_복리후생_규정_길동상사.pdf",
+            "path": "../../resources/복리후생 규정 - (주)길동상사.pdf",
             "collection_name": "welfare_of_employment",
-            "document_version": "1.0",
+            "document_version": document_version,
         },
         {
-            "path": "../../resources/3_출장여비_규정_길동상사.pdf",
+            "path": "../../resources/출장여비 규정 - (주)길동상사.pdf",
             "collection_name": "travel_expenses_of_employment",
-            "document_version": "1.0",
+            "document_version": document_version,
         },
         {
-            "path": "../../resources/4_쇼핑몰_CS_실무_매뉴얼_길동상사.pdf",
+            "path": "../../resources/쇼핑몰 CS 실무 매뉴얼 - (주)길동상사.pdf",
             "collection_name": "shopping_cs_manual",
-            "document_version": "1.0",
+            "document_version": document_version,
         },
     ]
 
