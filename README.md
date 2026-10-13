@@ -20,14 +20,14 @@ OpenAI 모델과 LangChain 에이전트를 연결하고, 등록된 도구를 사
 문서 검색은 PostgreSQL/pgvector의 컬렉션별 Retriever를 사용하며,
 검색 결과를 바탕으로 메인 에이전트가 답변합니다. 분야별 별도 모델은 호출하지 않습니다.
 
-| 분야 | 도구 | 컬렉션 |
-| --- | --- | --- |
-| 길동이 소개·사용 방법 | `introduce_gildong` | — |
-| 현재 시간 | `get_current_time` | — |
-| 취업규칙 | `gd_hr_rules_of_employment` | `rules_of_employment` |
-| 복리후생 | `gd_hr_welfare_of_employment` | `welfare_of_employment` |
-| 출장여비 | `gd_hr_travel_expenses_of_employment` | `travel_expenses_of_employment` |
-| 쇼핑몰 CS | `gd_mall_shopping_cs_manual` | `shopping_cs_manual` |
+| 분야                  | 도구                                  | 컬렉션                          |
+| --------------------- | ------------------------------------- | ------------------------------- |
+| 길동이 소개·사용 방법 | `introduce_gildong`                   | —                               |
+| 현재 시간             | `get_current_time`                    | —                               |
+| 취업규칙              | `gd_hr_rules_of_employment`           | `rules_of_employment`           |
+| 복리후생              | `gd_hr_welfare_of_employment`         | `welfare_of_employment`         |
+| 출장여비              | `gd_hr_travel_expenses_of_employment` | `travel_expenses_of_employment` |
+| 쇼핑몰 CS             | `gd_mall_shopping_cs_manual`          | `shopping_cs_manual`            |
 
 벡터 저장소의 공통 설정은 `PgVectorStore`에서 관리합니다.
 `HumanResourceTool`과 `ShoppingMallCsTool`이 이를 상속해 컬렉션별 검색 도구를 생성합니다.
@@ -124,12 +124,12 @@ DB 데이터는 `postgres-gildong-sangsa` 볼륨에 저장됩니다.
 
 `resources/`에 아래 PDF 파일을 준비합니다.
 
-| 파일 | 저장 컬렉션 |
-| --- | --- |
-| `1_취업규칙_길동상사.pdf` | `rules_of_employment` |
-| `2_복리후생_규정_길동상사.pdf` | `welfare_of_employment` |
-| `3_출장여비_규정_길동상사.pdf` | `travel_expenses_of_employment` |
-| `4_쇼핑몰_CS_실무_매뉴얼_길동상사.pdf` | `shopping_cs_manual` |
+| 파일                                   | 저장 컬렉션                     |
+| -------------------------------------- | ------------------------------- |
+| `취업규칙 - (주)길동상사.pdf`              | `rules_of_employment`           |
+| `복리후생 규정 - (주)길동상사.pdf`         | `welfare_of_employment`         |
+| `출장여비 규정 - (주)길동상사.pdf`         | `travel_expenses_of_employment` |
+| `쇼핑몰 CS 실무 매뉴얼 - (주)길동상사.pdf` | `shopping_cs_manual`            |
 
 프로젝트 루트에서 실행합니다. DB가 실행 중이어야 합니다.
 
@@ -146,12 +146,42 @@ docker compose exec app uv run python src/doc-importer/main.py
 적재 과정은 PDF 로드 → 토큰 기준 청크 분할 → OpenAI 임베딩 생성 → 컬렉션별 저장입니다.
 기본 분할 설정은 `chunk_size=1000`, `chunk_overlap=200`, `encoding_name="cl100k_base"`입니다.
 파일별로 `1 of 4 완료`와 같은 진행 상황이 표시됩니다.
+현재 적재 코드는 PDF 로더가 생성한 메타데이터를 유지하고, 각 청크에
+실제 사용한 `embedding_model`을 추가합니다.
+
+| 필드 | 생성 방식 |
+| --- | --- |
+| `source` | PDF 로더의 출처. 누락되거나 비어 있으면 파일명으로 보완 |
+| `page` | PDF 로더가 생성하는 0부터 시작하는 페이지 인덱스 |
+| `embedding_model` | `OpenAIEmbeddings()` 객체의 모델 이름 |
+| 제목·작성자 등 | PDF 로더가 추출한 원본 메타데이터 |
+
+현재 `document_version`, `embedded_at`, `import_id`, `effective_date`는
+자동 생성하거나 추가하지 않습니다. PDF의 생성·수정 날짜는 임베딩 날짜나
+규정 시행일을 의미하지 않습니다. 이전 코드로 저장된 DB 문서의 메타데이터는
+그대로 남을 수 있으며, 현재 검색에는 버전·시행일 필터가 없습니다.
+
 현재 적재 코드는 중복 제거 없이 문서를 추가하므로, 같은 파일을 다시 실행하면 중복 저장될 수 있습니다.
 
 검색 도구는 `similarity` 방식으로 관련 청크를 최대 4개 반환하며,
-각 청크를 출처(`metadata["source"]`)와 본문이 포함된 `<document>` 형식으로 전달합니다.
-PDF 적재 시 `source`가 누락되면 파일명을 넣습니다. 기존 저장 문서에 출처가 없으면
-검색 결과에 `출처 정보 없음`을 표시하며, 원본 DB 문서는 변경하지 않습니다. 검색 결과에 답변 근거가 있는지는 에이전트가 판단합니다.
+PDF는 `mode="page"`로 페이지별 로드한 뒤 분할합니다. 각 청크에
+로더가 생성한 0부터 시작하는 `page`를 그대로 저장하며, `page_number`는 새로 생성하지 않습니다.
+이는 PDF 파일의 페이지 순서이며 인쇄된 페이지 번호와 다를 수 있습니다.
+각 청크를 출처(`metadata["source"]`), PDF 페이지와 본문이 포함된 `<document>` 형식으로 전달합니다.
+PDF 적재 시 `source`가 누락되면 파일명을 넣습니다. 검색은 기본 Retriever를 사용하며
+메타데이터를 자동 보정하지 않습니다. 기존 문서에 템플릿이 요구하는 `source` 또는
+`page`가 없으면 검색 결과 포맷팅 오류가 발생할 수 있습니다.
+검색 결과에 답변 근거가 있는지는 에이전트가 판단합니다.
+참고 문서 출력에서는 저장된 `page`에 1을 더해 표시합니다. 예: `page=0`은
+PDF 페이지 1로 표시합니다. 유효한 페이지 정보가 없으면 `페이지 정보 없음`을 표시합니다.
+참고 문서 출력에는 출처 파일명과 페이지를 표시하며, 날짜나 버전은 표시하지 않습니다.
+모델에 전달하는 문서 템플릿은 원본 `page` 인덱스를 사용하고, 별도 참고 문서 출력에서만
+1을 더하므로 답변 본문의 페이지 표현과 별도 출력의 기준이 다를 수 있습니다.
+
+문서 검색 도구는 본문과 함께 원본 문서 목록을 `artifact`로 반환합니다.
+현재 질문에서 검색된 출처·페이지를 코드에서 모아 답변 아래에 `검색된 참고 문서`로
+표시합니다. 중복 항목과 이전 질문의 결과는 제외하며, 검색된 문서가 모두 최종 답변의
+근거로 사용되었다는 뜻은 아닙니다.
 
 ## 사용 방법
 
@@ -202,8 +232,7 @@ You> 쇼핑몰 반품 요청은 어떻게 처리해야 해?
         ├── main.py                # 콘솔 입력, Markdown 출력 및 에이전트 구성
         ├── __init__.py            # 설치 가능한 agent 패키지
         ├── store/
-        │   ├── pg_vector_store.py # DB 연결과 벡터 저장소 기반 클래스
-        │   └── source_retriever.py # 검색 결과 출처 보정
+        │   └── pg_vector_store.py # DB 연결과 벡터 저장소 기반 클래스
         └── tools/
             ├── __init__.py        # 도구 내보내기
             ├── current_time_tool.py    # 현재 시간 조회
@@ -238,11 +267,11 @@ Black 포맷과 Conventional Commits 메시지 형식입니다.
 
 반복 작업의 절차는 `.agents/skills/`에 프로젝트 스킬로 관리합니다.
 
-| 스킬 | 역할 | 파일 |
-| --- | --- | --- |
-| `pr` | 변경 검토, PR 제목·본문 작성, 요청받은 PR 생성·수정 | [SKILL.md](.agents/skills/pr/SKILL.md) |
-| `code-review` | 버그, 회귀 위험, RAG 근거·출처 처리와 DB 설정 검토 | [SKILL.md](.agents/skills/code-review/SKILL.md) |
-| `issue` | 버그·기능 요청 정리, 요청받은 이슈 생성·수정 | [SKILL.md](.agents/skills/issue/SKILL.md) |
+| 스킬          | 역할                                                | 파일                                            |
+| ------------- | --------------------------------------------------- | ----------------------------------------------- |
+| `pr`          | 변경 검토, PR 제목·본문 작성, 요청받은 PR 생성·수정 | [SKILL.md](.agents/skills/pr/SKILL.md)          |
+| `code-review` | 버그, 회귀 위험, RAG 근거·출처 처리와 DB 설정 검토  | [SKILL.md](.agents/skills/code-review/SKILL.md) |
+| `issue`       | 버그·기능 요청 정리, 요청받은 이슈 생성·수정        | [SKILL.md](.agents/skills/issue/SKILL.md)       |
 
 프로젝트 스킬을 지원하는 AI 도구에서 다음과 같이 요청할 수 있습니다.
 
@@ -257,11 +286,11 @@ $issue 문서 검색 오류를 버그 이슈 문안으로 정리해줘
 
 ## GitHub 템플릿
 
-| 템플릿 | 작성 항목 | 파일 |
-| --- | --- | --- |
-| PR | 변경 목적, 주요 변경, 관련 이슈, 검증 결과, 영향·제한 사항 | [PR 템플릿](.github/pull_request_template.md) |
-| 버그 보고 | 문제 설명, 재현 방법, 기대·실제 동작, 환경, 로그, RAG 관련 정보 | [버그 템플릿](.github/ISSUE_TEMPLATE/bug_report.md) |
-| 기능 요청 | 해결할 문제, 원하는 동작, 작업 범위, 완료 조건, RAG 요구사항 | [기능 요청 템플릿](.github/ISSUE_TEMPLATE/feature_request.md) |
+| 템플릿    | 작성 항목                                                       | 파일                                                          |
+| --------- | --------------------------------------------------------------- | ------------------------------------------------------------- |
+| PR        | 변경 목적, 주요 변경, 관련 이슈, 검증 결과, 영향·제한 사항      | [PR 템플릿](.github/pull_request_template.md)                 |
+| 버그 보고 | 문제 설명, 재현 방법, 기대·실제 동작, 환경, 로그, RAG 관련 정보 | [버그 템플릿](.github/ISSUE_TEMPLATE/bug_report.md)           |
+| 기능 요청 | 해결할 문제, 원하는 동작, 작업 범위, 완료 조건, RAG 요구사항    | [기능 요청 템플릿](.github/ISSUE_TEMPLATE/feature_request.md) |
 
 템플릿이 기본 브랜치에 반영되면 GitHub에서 새 PR이나 이슈를 작성할 때 사용할 수 있습니다.
 해당하는 항목만 작성하고 불필요한 항목은 삭제합니다. 검증 결과에는 실제 DB/OpenAI

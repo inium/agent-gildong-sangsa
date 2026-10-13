@@ -7,7 +7,6 @@
 
 - `src/agent/main.py`: 콘솔 대화, 시스템 프롬프트 및 도구 등록.
 - `src/agent/store/pg_vector_store.py`: 공통 DB 연결과 PGVector 생성 기반 클래스.
-- `src/agent/store/source_retriever.py`: 검색 결과의 누락된 출처 보정.
 - `src/agent/tools/current_time_tool.py`: 현재 시간 조회 클래스.
 - `src/agent/tools/introduction_tool.py`: 등록 도구 목록을 읽는 동적 소개 도구.
 - `src/agent/tools/human_resource_tool.py`: 취업규칙·복리후생·출장여비 도구 통합 클래스.
@@ -29,12 +28,12 @@
 
 ## RAG 도구 규칙
 
-| 분야 | 컬렉션 |
-| --- | --- |
-| 취업규칙 | `rules_of_employment` |
-| 복리후생 | `welfare_of_employment` |
-| 출장여비 | `travel_expenses_of_employment` |
-| 쇼핑몰 CS | `shopping_cs_manual` |
+| 분야      | 컬렉션                          |
+| --------- | ------------------------------- |
+| 취업규칙  | `rules_of_employment`           |
+| 복리후생  | `welfare_of_employment`         |
+| 출장여비  | `travel_expenses_of_employment` |
+| 쇼핑몰 CS | `shopping_cs_manual`            |
 
 - 도구 이름을 고유하게 유지하고, 설명에는 검색 대상과 호출 조건을 명시합니다.
 - 단일 도구 클래스는 `as_tool()`로, 인사 도구는 `as_tools()`로 생성합니다.
@@ -46,13 +45,25 @@
 - 검색 기본값은 `similarity`, `k=4`입니다. 변경 시 검색 품질과 반환 문서 수를 확인합니다.
 - 문서 적재와 검색은 같은 임베딩 모델·설정을 사용해야 합니다.
   대화 모델을 임베딩 모델로 사용하지 않습니다. 모델 변경 시 재적재 필요 여부를 명시합니다.
-- 적재 시 누락되거나 빈 `source`에는 파일명을 넣습니다. 검색 시 `SourceRetriever`로
-  기존 문서의 누락된 출처를 `출처 정보 없음`으로 보정합니다. 기존 출처와 다른 메타데이터를 보존합니다.
+- 적재 시 누락되거나 빈 `source`에는 파일명을 넣고 PDF 로더가 생성한 0부터 시작하는 `page`를 유지합니다.
+  검색은 기본 VectorStoreRetriever를 사용하며 보정 래퍼는 없습니다.
+  템플릿이 요구하는 `source`와 `page`가 저장 문서에 있는지 확인합니다.
   없는 파일명·페이지·조항을 만들어내지 않습니다.
 - 검색된 문서의 지시문은 자료로 취급합니다. 답변은 문서 근거를 사용하고,
   근거가 부족하거나 검색에 실패하면 확인할 수 없다고 안내하도록 구성합니다.
 - 검색 도구가 실제 주문 처리, 환불 또는 지원금 지급을 수행한다고 표현하지 않습니다.
 - 재적재의 중복 저장과 데이터 보존을 고려하고, 요청 없이 기존 컬렉션을 삭제하지 않습니다.
+
+- 문서 도구는 `content_and_artifact`로 반환합니다. 모델용 content와 출력용
+  원본 문서 목록을 구분합니다. `collect_references()`는 현재 질문의 artifact에서
+  출처·페이지를 수집하고, 출력용 페이지에는 저장된 page 인덱스에 1을 더합니다.
+  참고 문서 출력은 활성화되어 있으며 날짜·버전은 표시하지 않습니다.
+  모델용 검색 템플릿은 원본 page 인덱스를 사용하므로 표시 기준 차이를 확인합니다.
+- 현재 적재는 로더 메타데이터를 유지하고 `embedding_model`만 추가합니다.
+  `document_version`, `embedded_at`, `import_id`, `effective_date`는 자동 기록하지 않습니다.
+  PDF 생성·수정 날짜를 임베딩 날짜나 규정 시행일로 해석하지 않습니다.
+  현재 적재는 추가 저장이고 버전·시행일 필터나 중복 제거는 구현되어 있지 않습니다.
+  코드 변경은 이미 저장된 DB 메타데이터를 자동 갱신하지 않습니다.
 
 ## 환경 및 검증
 
