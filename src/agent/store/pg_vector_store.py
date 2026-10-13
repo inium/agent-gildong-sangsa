@@ -13,7 +13,8 @@ class PgVectorStore:
     def __init__(self) -> None:
         """연결 URL과 임베딩 객체를 설정합니다.
 
-        생략하면 환경 변수로 연결 URL을 생성하고 OpenAIEmbeddings를 사용합니다.
+        .env와 PG_* 환경 변수로 연결 URL을 생성하고 OpenAIEmbeddings()를
+        초기화합니다. 외부에서 설정을 전달받는 생성자 인자는 없습니다.
         """
         self.__connection = self.__pg_connection_str()
         self.__embeddings = OpenAIEmbeddings()
