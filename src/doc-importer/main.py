@@ -78,10 +78,6 @@ def pdf_text_splitter(
     loader = PyMuPDF4LLMLoader(path, mode="page")
 
     data = loader.load()
-    for document in data:
-        # 로더의 page는 0부터 시작하며, 표시용 PDF 페이지 번호는 1부터 시작합니다.
-        document.metadata["page_number"] = document.metadata["page"] + 1
-
     text_splitter = RecursiveCharacterTextSplitter.from_tiktoken_encoder(
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
