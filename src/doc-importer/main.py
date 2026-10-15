@@ -152,25 +152,25 @@ def main():
     files = [
         {
             "path": "../../resources/취업규칙 - (주)길동상사.pdf",
-            "collection_name": "rules_of_employment",
+            "collection_name": "hr_rules_of_employment",
             "name": "취업규칙",
             "description": "길동상사의 근로시간, 휴가, 복무 및 인사 규정",
         },
         {
             "path": "../../resources/복리후생 규정 - (주)길동상사.pdf",
-            "collection_name": "welfare_of_employment",
+            "collection_name": "hr_welfare_of_employment",
             "name": "복리후생 규정",
             "description": "직원 복지 혜택, 지원 조건 및 신청 절차",
         },
         {
             "path": "../../resources/출장여비 규정 - (주)길동상사.pdf",
-            "collection_name": "travel_expenses_of_employment",
+            "collection_name": "hr_travel_of_employment",
             "name": "출장여비 규정",
             "description": "출장 비용 지급 기준 및 정산 절차",
         },
         {
             "path": "../../resources/쇼핑몰 CS 실무 매뉴얼 - (주)길동상사.pdf",
-            "collection_name": "shopping_cs_manual",
+            "collection_name": "mall_cs",
             "name": "쇼핑몰 CS 매뉴얼",
             "description": "주문, 배송, 교환, 반품 및 고객응대 절차",
         },
