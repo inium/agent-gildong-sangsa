@@ -1,6 +1,6 @@
 from collections.abc import Sequence
-
 from langchain_core.tools import BaseTool, StructuredTool
+from agent.prompts import load_prompt
 
 
 class IntroductionTool:
@@ -39,10 +39,5 @@ class IntroductionTool:
         return StructuredTool.from_function(
             func=self.introduce,
             name="introduce_gildong",
-            description=(
-                "길동이의 이름, 역할, 지원 기능, 사용 방법과 제한 사항을 안내합니다. "
-                "'너는 누구야?', '길동이는 무엇을 할 수 있어?', '사용 방법을 알려줘' "
-                "같은 자기소개·기능 안내 질문에 사용하세요. "
-                "현재 시간이나 사내 규정의 실제 내용은 해당 분야 도구로 확인하세요."
-            ),
+            description=load_prompt("common/introduce_description.md"),
         )

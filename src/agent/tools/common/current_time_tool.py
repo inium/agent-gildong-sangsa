@@ -2,6 +2,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import BaseModel, Field
 from langchain_core.tools import StructuredTool
+from agent.prompts import load_prompt
 
 
 class CurrentTimeInput(BaseModel):
@@ -18,31 +19,38 @@ class CurrentTimeInput(BaseModel):
 class CurrentTimeTool:
     """국가별 시간대 설정과 현재 시간 조회 도구를 제공합니다."""
 
-    TIMEZONES = {
-        "한국": "Asia/Seoul",
-        "대한민국": "Asia/Seoul",
-        "kr": "Asia/Seoul",
-        "south korea": "Asia/Seoul",
-        "일본": "Asia/Tokyo",
-        "jp": "Asia/Tokyo",
-        "japan": "Asia/Tokyo",
-        "중국": "Asia/Shanghai",
-        "cn": "Asia/Shanghai",
-        "china": "Asia/Shanghai",
-        "인도": "Asia/Kolkata",
-        "in": "Asia/Kolkata",
-        "india": "Asia/Kolkata",
-        "영국": "Europe/London",
-        "gb": "Europe/London",
-        "uk": "Europe/London",
-        "united kingdom": "Europe/London",
-        "독일": "Europe/Berlin",
-        "de": "Europe/Berlin",
-        "germany": "Europe/Berlin",
-        "싱가포르": "Asia/Singapore",
-        "sg": "Asia/Singapore",
-        "singapore": "Asia/Singapore",
-    }
+    def __init__(self):
+        # Agent Tool Name
+        self.tool_name = "get_current_time"
+
+        # 에이전트에게 도구의 용도, 호출 조건 설명
+        self.tool_description = load_prompt("common/current_time_description.md")
+
+        self.timezones = {
+            "한국": "Asia/Seoul",
+            "대한민국": "Asia/Seoul",
+            "kr": "Asia/Seoul",
+            "south korea": "Asia/Seoul",
+            "일본": "Asia/Tokyo",
+            "jp": "Asia/Tokyo",
+            "japan": "Asia/Tokyo",
+            "중국": "Asia/Shanghai",
+            "cn": "Asia/Shanghai",
+            "china": "Asia/Shanghai",
+            "인도": "Asia/Kolkata",
+            "in": "Asia/Kolkata",
+            "india": "Asia/Kolkata",
+            "영국": "Europe/London",
+            "gb": "Europe/London",
+            "uk": "Europe/London",
+            "united kingdom": "Europe/London",
+            "독일": "Europe/Berlin",
+            "de": "Europe/Berlin",
+            "germany": "Europe/Berlin",
+            "싱가포르": "Asia/Singapore",
+            "sg": "Asia/Singapore",
+            "singapore": "Asia/Singapore",
+        }
 
     def get_current_time(self, country: str = "한국") -> str:
         """국가명·코드 또는 IANA 시간대의 현재 시간을 반환합니다.
@@ -55,7 +63,7 @@ class CurrentTimeTool:
             str: 날짜, 시간, 시간대 및 UTC 오프셋 또는 입력 확인 안내입니다.
         """
         country = country.strip()
-        timezone_name = self.TIMEZONES.get(country.casefold(), country)
+        timezone_name = self.timezones.get(country.casefold(), country)
         try:
             timezone = ZoneInfo(timezone_name)
         except ZoneInfoNotFoundError, ValueError:
@@ -71,11 +79,7 @@ class CurrentTimeTool:
         """country만 입력받는 에이전트용 시간 조회 도구를 생성합니다."""
         return StructuredTool.from_function(
             func=self.get_current_time,
-            name="get_current_time",
-            description=(
-                "지정한 국가의 현재 날짜와 시간을 반환합니다. 기본값은 한국입니다. "
-                "국가명·국가 코드 또는 IANA 시간대를 지정하세요. "
-                "미국 등 시간대가 여러 개인 국가는 America/New_York처럼 지역을 지정하세요."
-            ),
+            name=self.tool_name,
+            description=self.tool_description,
             args_schema=CurrentTimeInput,
         )
