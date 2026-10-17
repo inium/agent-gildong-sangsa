@@ -16,17 +16,28 @@ OpenAI 모델과 LangChain 에이전트를 연결하고, 등록된 도구를 사
   처리할 도구가 없으면 “현재 제공된 도구로는 해당 내용을 확인할 수 없습니다.”라고
   안내하도록 설정되어 있습니다. 이 규칙은 프롬프트 기반이며 코드로 강제하지 않습니다.
 
-에이전트에는 시간 조회 도구와 네 개의 문서 검색 도구가 등록되어 있습니다.
+에이전트에는 소개 도구, 시간 조회 도구와 네 개의 문서 검색 도구가 등록되어 있습니다.
 문서 검색은 PostgreSQL/pgvector의 컬렉션별 Retriever를 사용하며,
 검색 결과를 바탕으로 메인 에이전트가 답변합니다. 분야별 별도 모델은 호출하지 않습니다.
 
-| 분야 | 도구 | 컬렉션 |
-| --- | --- | --- |
-| 현재 시간 | `get_current_time` | — |
-| 취업규칙 | `gd_hr_rules_of_employment` | `rules_of_employment` |
-| 복리후생 | `gd_hr_welfare_of_employment` | `welfare_of_employment` |
-| 출장여비 | `gd_hr_travel_expenses_of_employment` | `travel_expenses_of_employment` |
-| 쇼핑몰 CS | `gd_mall_shopping_cs_manual` | `shopping_cs_manual` |
+| 분야                  | 도구                                  | 컬렉션                          |
+| --------------------- | ------------------------------------- | ------------------------------- |
+| 길동이 소개·사용 방법 | `introduce_gildong`                   | —                               |
+| 현재 시간             | `get_current_time`                    | —                               |
+| 취업규칙              | `gd_hr_rules_of_employment`           | `rules_of_employment`           |
+| 복리후생              | `gd_hr_welfare_of_employment`         | `welfare_of_employment`         |
+| 출장여비              | `gd_hr_travel_expenses_of_employment` | `travel_expenses_of_employment` |
+| 쇼핑몰 CS             | `gd_mall_shopping_cs_manual`          | `shopping_cs_manual`            |
+
+벡터 저장소의 공통 설정은 `PgVectorStore`에서 관리합니다.
+`HumanResourceTool`과 `ShoppingMallCsTool`이 이를 상속해 컬렉션별 검색 도구를 생성합니다.
+쇼핑몰 검색 도구는 `ShoppingMallCsTool().as_tool()`로 생성하며,
+에이전트에 노출되는 이름은 `gd_mall_shopping_cs_manual`입니다.
+
+소개 도구는 에이전트에 등록된 도구의 이름과 `description`을 읽어 기능을 안내합니다.
+`main.py`의 도구 목록에 기능을 추가하면 소개에도 반영되며, 소개 시 다른 도구를 실행하지 않습니다.
+시스템 프롬프트는 공통 선택 규칙만 관리하고, 분야별 사용 조건은 각 도구의
+`description`에 작성합니다. 도구를 추가할 때 프롬프트에 별도 목록을 추가할 필요가 없습니다.
 
 ## 실행 환경
 
@@ -68,19 +79,18 @@ cp .env.example .env
 
 ```bash
 uv sync
-PYTHONPATH=src uv run python -m agent.main
+uv run agent
 ```
 
 위 명령은 Linux/macOS 및 컨테이너의 셸 기준입니다. Windows PowerShell에서는
 다음과 같이 실행합니다.
 
 ```powershell
-$env:PYTHONPATH = "src"
-uv run python -m agent.main
+uv run agent
 ```
 
-현재 `pyproject.toml`에는 빌드 백엔드 선언이 없고 `agent` 실행 진입점이
-`agent:main:main`으로 지정되어 있으므로, 여기서는 소스 경로를 지정해 모듈을 직접 실행합니다.
+`uv_build`로 `src/agent` 패키지를 설치하고, `agent.main:main` 진입점으로
+`agent` 명령을 생성합니다. `uv run agent`는 실행 전에 의존성과 프로젝트를 동기화합니다.
 
 ## Dev Container 실행
 
@@ -90,7 +100,7 @@ uv run python -m agent.main
 4. 컨테이너 터미널에서 아래 PDF 문서 적재를 완료한 후 에이전트를 실행합니다.
 
 ```bash
-PYTHONPATH=src uv run python -m agent.main
+uv run agent
 ```
 
 컨테이너 시작 시 `uv lock`과 `uv sync --no-dev`가 실행되며, Python 환경은
@@ -100,7 +110,7 @@ VS Code 없이 Docker Compose로 실행할 수도 있습니다.
 
 ```bash
 docker compose up -d --build
-docker compose exec app sh -c 'PYTHONPATH=src uv run python -m agent.main'
+docker compose exec app uv run agent
 ```
 
 | 서비스 | 컨테이너 포트 | 호스트 포트 | 용도                                                 |
@@ -114,12 +124,12 @@ DB 데이터는 `postgres-gildong-sangsa` 볼륨에 저장됩니다.
 
 `resources/`에 아래 PDF 파일을 준비합니다.
 
-| 파일 | 저장 컬렉션 |
-| --- | --- |
-| `1_취업규칙_길동상사.pdf` | `rules_of_employment` |
-| `2_복리후생_규정_길동상사.pdf` | `welfare_of_employment` |
-| `3_출장여비_규정_길동상사.pdf` | `travel_expenses_of_employment` |
-| `4_쇼핑몰_CS_실무_매뉴얼_길동상사.pdf` | `shopping_cs_manual` |
+| 파일                                   | 저장 컬렉션                     |
+| -------------------------------------- | ------------------------------- |
+| `취업규칙 - (주)길동상사.pdf`              | `rules_of_employment`           |
+| `복리후생 규정 - (주)길동상사.pdf`         | `welfare_of_employment`         |
+| `출장여비 규정 - (주)길동상사.pdf`         | `travel_expenses_of_employment` |
+| `쇼핑몰 CS 실무 매뉴얼 - (주)길동상사.pdf` | `shopping_cs_manual`            |
 
 프로젝트 루트에서 실행합니다. DB가 실행 중이어야 합니다.
 
@@ -136,17 +146,67 @@ docker compose exec app uv run python src/doc-importer/main.py
 적재 과정은 PDF 로드 → 토큰 기준 청크 분할 → OpenAI 임베딩 생성 → 컬렉션별 저장입니다.
 기본 분할 설정은 `chunk_size=1000`, `chunk_overlap=200`, `encoding_name="cl100k_base"`입니다.
 파일별로 `1 of 4 완료`와 같은 진행 상황이 표시됩니다.
+현재 적재 코드는 PDF 로더가 생성한 메타데이터를 유지하고, 각 청크에
+실제 사용한 `embedding_model`을 추가합니다.
+
+| 필드 | 생성 방식 |
+| --- | --- |
+| `source` | PDF 로더의 출처. 누락되거나 비어 있으면 파일명으로 보완 |
+| `page` | PDF 로더가 생성하는 0부터 시작하는 페이지 인덱스 |
+| `embedding_model` | `OpenAIEmbeddings()` 객체의 모델 이름 |
+| 제목·작성자 등 | PDF 로더가 추출한 원본 메타데이터 |
+
+컬렉션 메타데이터는 `langchain_pg_collection.cmetadata`에 저장합니다.
+`files`에서 컬렉션의 표시 이름과 설명을 지정하고, 새 컬렉션을 생성할 때
+아래 값을 `collection_metadata`로 전달합니다.
+
+| 필드 | 값 |
+| --- | --- |
+| `name` | 표시 이름. 예: 취업규칙 |
+| `description` | 저장 문서의 범위와 용도 |
+| `created_at` | 컬렉션 생성 요청 시 한국 시간의 ISO 8601 문자열 |
+| `updated_at` | 새 컬렉션 생성 시 created_at과 같은 값 |
+
+현재 기존 컬렉션에 대한 별도 UPDATE 코드는 없습니다. 같은 컬렉션에 다시
+적재해도 `name`, `description`, `created_at`, `updated_at`은 자동 갱신되지 않습니다.
+기존 컬렉션의 메타데이터가 비어 있으면 재적재만으로 채워지지 않습니다.
+문서 청크는 계속 추가 저장되며, 컬렉션 날짜는 개별 청크의 임베딩 시각을 의미하지 않습니다.
+이 값들은 테이블의 날짜 컬럼이나 DB의 NOW() 기본값이 아니라 Python 코드가
+생성해 JSON에 넣는 문자열입니다.
+
+현재 `document_version`, `embedded_at`, `import_id`, `effective_date`는
+자동 생성하거나 추가하지 않습니다. PDF의 생성·수정 날짜는 임베딩 날짜나
+규정 시행일을 의미하지 않습니다. 이전 코드로 저장된 DB 문서의 메타데이터는
+그대로 남을 수 있으며, 현재 검색에는 버전·시행일 필터가 없습니다.
+
 현재 적재 코드는 중복 제거 없이 문서를 추가하므로, 같은 파일을 다시 실행하면 중복 저장될 수 있습니다.
 
 검색 도구는 `similarity` 방식으로 관련 청크를 최대 4개 반환하며,
-각 청크를 출처(`metadata["source"]`)와 본문이 포함된 `<document>` 형식으로 전달합니다.
-문서에는 `source` 메타데이터가 필요합니다. 검색 결과에 답변 근거가 있는지는 에이전트가 판단합니다.
+PDF는 `mode="page"`로 페이지별 로드한 뒤 분할합니다. 각 청크에
+로더가 생성한 0부터 시작하는 `page`를 그대로 저장하며, `page_number`는 새로 생성하지 않습니다.
+이는 PDF 파일의 페이지 순서이며 인쇄된 페이지 번호와 다를 수 있습니다.
+각 청크를 출처(`metadata["source"]`), PDF 페이지와 본문이 포함된 `<document>` 형식으로 전달합니다.
+PDF 적재 시 `source`가 누락되면 파일명을 넣습니다. 검색은 기본 Retriever를 사용하며
+메타데이터를 자동 보정하지 않습니다. 기존 문서에 템플릿이 요구하는 `source` 또는
+`page`가 없으면 검색 결과 포맷팅 오류가 발생할 수 있습니다.
+검색 결과에 답변 근거가 있는지는 에이전트가 판단합니다.
+참고 문서 출력에서는 저장된 `page`에 1을 더해 표시합니다. 예: `page=0`은
+PDF 페이지 1로 표시합니다. 유효한 페이지 정보가 없으면 `페이지 정보 없음`을 표시합니다.
+참고 문서 출력에는 출처 파일명과 페이지를 표시하며, 날짜나 버전은 표시하지 않습니다.
+모델에 전달하는 문서 템플릿은 원본 `page` 인덱스를 사용하고, 별도 참고 문서 출력에서만
+1을 더하므로 답변 본문의 페이지 표현과 별도 출력의 기준이 다를 수 있습니다.
+
+문서 검색 도구는 본문과 함께 원본 문서 목록을 `artifact`로 반환합니다.
+현재 질문에서 검색된 출처·페이지를 코드에서 모아 답변 아래에 `검색된 참고 문서`로
+표시합니다. 중복 항목과 이전 질문의 결과는 제외하며, 검색된 문서가 모두 최종 답변의
+근거로 사용되었다는 뜻은 아닙니다.
 
 ## 사용 방법
 
 실행 후 자연어로 질문합니다.
 
 ```text
+You> 길동이는 무엇을 할 수 있어?
 You> 한국은 지금 몇 시야?
 You> 일본의 현재 날짜와 시간을 알려줘
 You> America/New_York의 현재 시간을 알려줘
@@ -155,6 +215,10 @@ You> 복리후생 지원 대상과 신청 방법을 알려줘
 You> 출장 숙박비 정산 기준은 무엇이야?
 You> 쇼핑몰 반품 요청은 어떻게 처리해야 해?
 ```
+
+시간 도구는 `CurrentTimeTool` 클래스로 구현하며, `as_tool()`이 반환하는
+`get_current_time` 도구를 에이전트에 등록합니다. Python 코드에서는
+`CurrentTimeTool().get_current_time("한국")`으로 직접 사용할 수 있습니다.
 
 시간 도구는 한국, 일본, 중국, 인도, 영국, 독일, 싱가포르의 국가명과 코드를 지원합니다.
 다른 지역은 `Europe/Paris`처럼 IANA 시간대를 지정할 수 있습니다.
@@ -169,6 +233,9 @@ You> 쇼핑몰 반품 요청은 어떻게 처리해야 해?
 ```text
 .
 ├── .devcontainer/devcontainer.json  # VS Code 개발 컨테이너 설정
+├── .agents/skills/                  # pr, code-review, issue 작업 스킬
+├── .github/                        # PR 및 버그·기능 요청 템플릿
+├── AGENTS.md                       # 저장소 전체의 AI 작업 지침
 ├── .env.example                    # 환경 변수 예제
 ├── .pre-commit-config.yaml         # 코드 및 커밋 메시지 검사
 ├── .vscode/settings.json           # 포맷터 및 커밋 작성 설정
@@ -181,14 +248,15 @@ You> 쇼핑몰 반품 요청은 어떻게 처리해야 해?
     ├── doc-importer/main.py        # PDF 분할·임베딩·DB 적재
     └── agent/
         ├── main.py                # 콘솔 입력, Markdown 출력 및 에이전트 구성
-        ├── config/vector_store.py # PostgreSQL 연결 및 PGVector 생성
+        ├── __init__.py            # 설치 가능한 agent 패키지
+        ├── store/
+        │   └── pg_vector_store.py # DB 연결과 벡터 저장소 기반 클래스
         └── tools/
             ├── __init__.py        # 도구 내보내기
-            ├── common/datetime.py # 현재 시간 조회
-            ├── hr/rules.py        # 취업규칙 검색
-            ├── hr/welfare.py      # 복리후생 검색
-            ├── hr/travel.py       # 출장여비 검색
-            └── mall/customer.py   # 쇼핑몰 CS 검색
+            ├── current_time_tool.py    # 현재 시간 조회
+            ├── introduction_tool.py    # 등록된 도구 기반 소개
+            ├── human_resource_tool.py  # 취업규칙·복리후생·출장여비 검색
+            └── shopping_mall_cs_tool.py # 쇼핑몰 CS 검색
 ```
 
 ## 개발 검사
@@ -208,6 +276,43 @@ uv run pre-commit run --all-files
 
 검사 항목은 YAML/TOML 구문, 병합 충돌 표시, 파일 끝 개행, 줄 끝 공백,
 Black 포맷과 Conventional Commits 메시지 형식입니다.
+
+## AI 작업 지침과 스킬
+
+[AGENTS.md](AGENTS.md)는 저장소 전체에 적용되는 AI 작업 지침입니다.
+프로젝트 구조, 코드·docstring 작성 규칙, RAG 도구 연결과 임베딩 일치,
+검증 방법 및 GitHub 작업 범위를 정의합니다. 개발 방식이 변경되면 이 지침도 함께 갱신합니다.
+
+반복 작업의 절차는 `.agents/skills/`에 프로젝트 스킬로 관리합니다.
+
+| 스킬          | 역할                                                | 파일                                            |
+| ------------- | --------------------------------------------------- | ----------------------------------------------- |
+| `pr`          | 변경 검토, PR 제목·본문 작성, 요청받은 PR 생성·수정 | [SKILL.md](.agents/skills/pr/SKILL.md)          |
+| `code-review` | 버그, 회귀 위험, RAG 근거·출처 처리와 DB 설정 검토  | [SKILL.md](.agents/skills/code-review/SKILL.md) |
+| `issue`       | 버그·기능 요청 정리, 요청받은 이슈 생성·수정        | [SKILL.md](.agents/skills/issue/SKILL.md)       |
+
+프로젝트 스킬을 지원하는 AI 도구에서 다음과 같이 요청할 수 있습니다.
+
+```text
+$pr 현재 브랜치 변경으로 PR 제목과 본문을 작성해줘
+$code-review 현재 변경사항의 버그와 회귀 위험을 검토해줘
+$issue 문서 검색 오류를 버그 이슈 문안으로 정리해줘
+```
+
+스킬은 작업 절차를 정의합니다. 실제 GitHub 작업에는 인증된 `gh` CLI 또는
+연결된 GitHub 도구와 저장소 권한이 필요합니다. 문안 작성과 실제 생성은 요청 범위에 따라 구분합니다.
+
+## GitHub 템플릿
+
+| 템플릿    | 작성 항목                                                       | 파일                                                          |
+| --------- | --------------------------------------------------------------- | ------------------------------------------------------------- |
+| PR        | 변경 목적, 주요 변경, 관련 이슈, 검증 결과, 영향·제한 사항      | [PR 템플릿](.github/pull_request_template.md)                 |
+| 버그 보고 | 문제 설명, 재현 방법, 기대·실제 동작, 환경, 로그, RAG 관련 정보 | [버그 템플릿](.github/ISSUE_TEMPLATE/bug_report.md)           |
+| 기능 요청 | 해결할 문제, 원하는 동작, 작업 범위, 완료 조건, RAG 요구사항    | [기능 요청 템플릿](.github/ISSUE_TEMPLATE/feature_request.md) |
+
+템플릿이 기본 브랜치에 반영되면 GitHub에서 새 PR이나 이슈를 작성할 때 사용할 수 있습니다.
+해당하는 항목만 작성하고 불필요한 항목은 삭제합니다. 검증 결과에는 실제 DB/OpenAI
+호출과 모의 검증을 구분하며, API 키·토큰·비밀번호와 개인정보는 포함하지 않습니다.
 
 ## 커밋 규칙
 
@@ -263,3 +368,25 @@ gitmoji의 포함 여부와 타입별 매핑은 문서 규칙이며 별도로 �
 참고: [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/),
 [gitmoji](https://gitmoji.dev/),
 [VS Code 확장 설정](https://github.com/vivaxy/vscode-conventional-commits#extension-configuration).
+
+## 인사 검색 도구 구성
+
+`src/agent/tools/human_resource_tool.py`의 `HumanResourceTool`에서 취업규칙,
+복리후생, 출장여비 검색을 관리합니다. `as_tools()`로 세 개의 도구를 생성해
+에이전트에 등록합니다. 분야별 컬렉션과 기존 도구 이름은 유지합니다.
+공통 검색 구현은 한 클래스에서 공유하면서 분야별 도구 이름과 설명은 구분합니다.
+
+에이전트의 도구 목록은 다음 형태로 구성합니다.
+
+```python
+tools = [
+    CurrentTimeTool().as_tool(),
+    *HumanResourceTool().as_tools(),
+    ShoppingMallCsTool().as_tool(),
+]
+tools.append(IntroductionTool(tools).as_tool())
+```
+
+새 도구는 이 목록에 등록하고 `tools/__init__.py`에서 내보냅니다.
+기능 소개는 등록된 도구에서 자동 생성되고, 시스템 프롬프트는 도구 설명과
+입력 스키마를 참고하도록 구성되어 있어 분야별 목록을 별도로 수정할 필요가 없습니다.
