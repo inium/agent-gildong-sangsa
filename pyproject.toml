@@ -7,6 +7,7 @@ requires-python = ">=3.14"
 dependencies = [
     "black>=26.10.1",
     "conventional-commits-check>=2.9.0",
+    "kiwipiepy>=0.24.0",
     "langchain>=1.4.4",
     "langchain-openai>=1.7.0",
     "langchain-postgres>=0.0.19",
@@ -15,17 +16,20 @@ dependencies = [
     "langgraph>=1.2.14",
     "pre-commit>=4.6.2",
     "prompt-toolkit>=3.0.53",
+    "pydantic-settings>=2.16.1",
     "python-dotenv>=1.2.4",
+    "pyyaml>=6.0.2",
+    "rank-bm25>=0.2.2",
     "rich>=15.0.0",
     "uvicorn>=0.54.0",
 ]
 
-[project.scripts]
-agent = "agent.main:main"
+# [project.scripts]
+# agent = "agent.main:main"
 
-[build-system]
-requires = ["uv_build>=0.13.0,<0.14.0"]
-build-backend = "uv_build"
+# [build-system]
+# requires = ["uv_build>=0.13.0,<0.14.0"]
+# build-backend = "uv_build"
 
-[tool.uv.build-backend]
-module-name = "agent"
+# [tool.uv.build-backend]
+# module-name = "agent"

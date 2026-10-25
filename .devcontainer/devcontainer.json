@@ -19,7 +19,8 @@
         "ms-ossdata.vscode-pgsql",
         "tomoki1207.pdf",
         "tamasfe.even-better-toml",
-        "mechatroner.rainbow-csv"
+        "mechatroner.rainbow-csv",
+        "codezombiech.gitignore"
       ],
       "settings": {
         "python.defaultInterpreterPath": "/opt/venv/bin/python"
