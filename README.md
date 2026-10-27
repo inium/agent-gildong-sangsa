@@ -39,6 +39,13 @@ OpenAI 모델과 LangChain 에이전트를 연결하고, 등록된 도구를 사
 시스템 프롬프트는 공통 선택 규칙만 관리하고, 분야별 사용 조건은 각 도구의
 `description`에 작성합니다. 도구를 추가할 때 프롬프트에 별도 목록을 추가할 필요가 없습니다.
 
+프롬프트는 `src/agent/prompts/`에서 관리합니다.
+시스템 프롬프트는 `system.md`, 도구 설명은 `common/`, `hr/`, `mall/`에 있습니다.
+`load_prompt()`에는 이 디렉터리를 기준으로 한 `.md` 상대 경로를 전달합니다.
+예: `load_prompt("common/current_time_description.md")`.
+절대 경로와 `..`를 포함하는 경로는 허용하지 않습니다.
+프롬프트 수정 후 에이전트를 재시작하면 적용됩니다.
+
 ## 실행 환경
 
 - Python 3.14 이상 (개발 컨테이너: 3.14.7)
@@ -390,3 +397,85 @@ tools.append(IntroductionTool(tools).as_tool())
 새 도구는 이 목록에 등록하고 `tools/__init__.py`에서 내보냅니다.
 기능 소개는 등록된 도구에서 자동 생성되고, 시스템 프롬프트는 도구 설명과
 입력 스키마를 참고하도록 구성되어 있어 분야별 목록을 별도로 수정할 필요가 없습니다.
+
+### PGVectorStore 적재와 실습 검색
+
+`src/doc-importer/main.py`는 `PGVectorStore`로 분야별 테이블을 생성해 적재합니다.
+테이블 이름은 files의 collection_name 값을 사용하며, 기존 테이블을 삭제하지 않고
+추가 저장합니다. 중복 제거는 수행하지 않습니다. 벡터 차원은 실제 생성한 임베딩에서
+결정하며, 기존 테이블의 차원과 다른 모델로 적재하면 실패할 수 있습니다.
+청크의 source·page와 embedding_model을 유지하고 collection_name(표시 이름),
+collection_description을 추가합니다. 이 경로는 컬렉션 생성·수정 시각을 기록하지 않습니다.
+
+`src/practice/test.py`는 같은 `hr_rules_of_employment` 테이블을 검색합니다.
+기존 `langchain_pg_embedding` 및 `langchain_pg_collection` 데이터는 자동 이전되지
+않으며 삭제하지 않습니다. 새 구조를 사용하려면 PDF를 다시 적재해야 합니다.
+적재와 검색의 임베딩 모델·설정은 일치해야 합니다. 운영 에이전트의 기존 PGVector
+검색 도구는 변경하지 않았으므로 새 테이블을 검색하려면 별도 전환이 필요합니다.
+
+### 적재·조회 저장소 사용
+
+`document_importer.modules.PgVectorStore.create(table_name, vector_size, embeddings)`는
+새 테이블을 생성하며 기존 테이블을 덮어쓰지 않습니다. `connect(table_name, embeddings)`는
+기존 테이블에 연결하고 차원 확인용 임베딩 호출이나 테이블 생성을 하지 않습니다.
+두 메서드는 선택적으로 `connection`을 받으며 생략하면 PG_* 환경 변수를 사용합니다.
+반환된 객체의 `add_documents(documents)`는 저장한 ID 목록을, `search(query, k=4)`는
+검색 문서 목록을 반환합니다. `as_retriever(k=4)`는 similarity Retriever를 반환합니다.
+적재와 검색의 임베딩 모델·설정은 일치해야 하며 자동 검증하지 않습니다.
+적재 스크립트는 기존 테이블에 연결하고, 없는 경우에만 차원을 확인해 생성합니다.
+재실행은 추가 저장이며 중복 제거·기존 데이터 삭제는 수행하지 않습니다.
+
+```python
+from document_importer.modules import PgVectorStore
+
+store = PgVectorStore.connect("gd_hr_rules_of_employment")
+documents = store.search("연차휴가 신청 기준", k=4)
+retriever = store.as_retriever()
+```
+
+위 import는 `src`가 Python 검색 경로에 있어야 합니다. 적재 스크립트는
+`uv run python src/document_importer/main.py`로 실행합니다.
+
+`PgVectorStore.create()`의 `vector_size`를 생략하거나 `None`으로 전달하면
+실제 사용할 임베딩 객체의 `get_embedding_dimensions()`로 차원을 계산합니다.
+이 경우 확인용 임베딩 호출이 발생하며, 양수 차원을 지정하면 계산을 생략합니다.
+
+`as_retriever(search_type="similarity", search_kwargs=None)`로 검색 설정을
+지정할 수 있습니다. 옵션 생략 시 `{"k": 4}`를 사용하며, 예를 들어
+`as_retriever(search_type="mmr", search_kwargs={"k": 4, "fetch_k": 20})`로 호출합니다.
+
+`as_retriever()`의 `search_type`은 `similarity`, `mmr`만 허용합니다.
+다른 값은 `ValueError`를 발생시킵니다.
+
+`doc_importer.rag.store.document_ingester.DocumentIngester.create()`는 public
+스키마의 기존 테이블을 재사용하고, 없을 때만 생성합니다. 차원 자동 계산은
+새 테이블이 필요하고 `vector_size=None`일 때만 수행합니다. 기존 테이블의
+임베딩 모델·차원 일치 여부는 자동 검증하지 않으며, 중복 제거는 하지 않습니다.
+
+`PgVectorBase.connect()`는 기존 테이블 연결을 공통으로 제공합니다.
+`Document.connect(...)`와 `DocumentIngester.connect(...)`로 호출하면
+각 자식 클래스의 인스턴스를 반환하며 테이블 생성·차원 확인은 수행하지 않습니다.
+
+### 프롬프트 로더
+
+`PromptLoader.load("tools/introduction.yaml")`는 기본 templates 디렉터리에서
+프롬프트 객체를 읽습니다. 사용자 지정 경로는 `load(filename, base_dir=Path(...))`로
+전달합니다. 클래스 메서드이므로 기존 인스턴스에 설정한 base_dir는 사용하지 않습니다.
+문자열이 필요하면 반환 객체의 `.format(...)`을 호출합니다.
+
+`PromptLoader.load_text(filename, base_dir=None, **variables)`는 프롬프트를
+읽고 변수를 적용한 뒤 앞뒤 공백을 제거한 문자열을 반환합니다. 예를 들어
+`PromptLoader.load_text("tools/introduction.yaml", capabilities="지원 기능")`으로
+호출합니다. 기존 `load()`는 계속 프롬프트 객체를 반환합니다.
+
+### app 패키지 실행
+
+프로젝트 루트에서 `PYTHONPATH=src uv run python -m app.main`으로 실행합니다.
+`src`는 소스 디렉터리이며 import는 `app.*`를 사용합니다. 파일을 직접
+실행하는 `python src/app/main.py` 대신 모듈 실행 방식을 사용하세요.
+기존 `uv run agent` 진입점은 여전히 `agent.main:main`을 실행합니다.
+
+프롬프트 로더는 PyYAML의 safe_load와 JSON 파서를 사용해 설정을 읽고
+PromptTemplate을 직접 생성합니다. YAML/YML/JSON의 `_type: prompt`, 문자열
+`template`, `f-string` 형식을 지원하며, 사용 중단 예정인 load_prompt는 호출하지
+않습니다. 템플릿 본문은 같은 파일의 template 필드에 작성하세요.

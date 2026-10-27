@@ -3,3 +3,6 @@
 .omc
 .DS_Store
 .my_history
+
+__pycache__/
+*.py[cod]
