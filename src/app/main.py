@@ -1,13 +1,10 @@
 from langchain.agents import create_agent
-from langchain.chat_models import init_chat_model
-from langgraph.checkpoint.memory import InMemorySaver
+from langchain_core.messages import HumanMessage
 from rich.console import Console
 from rich.markdown import Markdown
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import FileHistory
-from app.config.model import openai_model
-from app.tools import all_tools
-from app.prompts.prompt_loader import PromptLoader
+from app.agents.supervisor_agent import SupervisorAgent
 
 
 def answer(answer: str, references: list[tuple[str, str]] | None = None) -> None:
@@ -18,29 +15,19 @@ def answer(answer: str, references: list[tuple[str, str]] | None = None) -> None
     console.print()
     console.print("길동이> ")
     console.print(Markdown(answer))
+
     if references:
         console.print("\n검색된 참고 문서:")
         for source, page in references:
             console.print(f"- {source} · PDF 페이지: {page}", markup=False)
+
     console.print()
 
 
 def main() -> None:
     """에이전트 메인 함수입니다."""
 
-    model = init_chat_model(
-        model=openai_model.model,
-        model_provider=openai_model.model_provider,
-        api_key=openai_model.api_key.get_secret_value(),
-        temperature=0,
-    )
-
-    agent = create_agent(
-        model=model,
-        tools=all_tools(),
-        system_prompt=PromptLoader.load_text("system.yaml"),
-        checkpointer=InMemorySaver(),
-    )
+    supervisor = SupervisorAgent().get_agent()
 
     thread_id = "session-1"
     config = {"configurable": {"thread_id": thread_id}}
@@ -69,8 +56,8 @@ def main() -> None:
             answer("종료합니다. 이용해 주셔서 감사합니다.")
             break
 
-        result = agent.invoke(
-            {"messages": [{"role": "user", "content": user_input}]}, config=config
+        result = supervisor.invoke(
+            {"messages": [HumanMessage(user_input)]}, config=config
         )
 
         answer(
