@@ -1,11 +1,13 @@
+import base64
+from types import NotImplementedType
 from io import StringIO
 from collections.abc import Callable
-
 from langchain_core.messages import HumanMessage
 from langgraph.graph.state import CompiledStateGraph
 from prompt_toolkit.application import Application
 from prompt_toolkit.buffer import Buffer
 from prompt_toolkit.document import Document
+from prompt_toolkit.mouse_events import MouseEvent, MouseEventType
 from prompt_toolkit.filters import Condition
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.lexers import Lexer
@@ -17,7 +19,6 @@ from prompt_toolkit.styles import Style
 from prompt_toolkit.widgets import Frame, Label, TextArea
 from rich.console import Console
 from rich.markdown import Markdown
-
 from app.agents.supervisor_agent import SupervisorAgent
 
 
@@ -47,6 +48,8 @@ class Chat:
         self.busy = False
         self.messages: list[tuple[str, str]] = []
         self.lexer = ChatLexer()
+        self.scroll_lines = 3  # 휠 이벤트 한 번에 이동할 줄 수
+        self.follow_output = True
         self.transcript = TextArea(
             text="안녕하세요, (주)길동상사 AI '길동이'입니다. 질문을 입력하세요.\n",
             read_only=True,
@@ -57,12 +60,56 @@ class Chat:
         self.input = TextArea(
             height=1,
             prompt="> ",
+            style="bg:#30343b #ffffff",
             multiline=False,
             wrap_lines=False,
             history=FileHistory(".my_history"),
             read_only=Condition(lambda: self.busy),
             accept_handler=self.submit,
         )
+        # 입력창 위에서도 휠은 대화 영역만 스크롤합니다.
+        for control in (self.transcript.control, self.input.control):
+            original_handler = control.mouse_handler
+
+            def mouse_handler(
+                event: MouseEvent,
+                handler: Callable[
+                    [MouseEvent], None | NotImplementedType
+                ] = original_handler,
+                target: Buffer = control.buffer,
+            ) -> None | NotImplementedType:
+                if event.event_type in {
+                    MouseEventType.SCROLL_UP,
+                    MouseEventType.SCROLL_DOWN,
+                }:
+                    self.follow_output = False
+                    for _ in range(self.scroll_lines):
+                        self.transcript.window._mouse_handler(event)
+                    return None
+                if event.event_type == MouseEventType.MOUSE_DOWN:
+                    self.follow_output = False
+                # 기본 선택 핸들러를 처리하는 동안만 대상 버퍼를 활성화합니다.
+                # 화면을 다시 그리기 전에 입력창으로 복귀해 커서 이동을 막습니다.
+                self.application.layout.focus(target)
+                try:
+                    result = handler(event)
+                finally:
+                    self.application.layout.focus(self.input)
+                if (
+                    event.event_type == MouseEventType.MOUSE_UP
+                    and target.selection_state
+                ):
+                    text = target.document.cut_selection()[1].text
+                    if text:
+                        self.application.clipboard.set_text(text)
+                        encoded = base64.b64encode(text.encode("utf-8")).decode("ascii")
+                        # OSC 52를 지원하는 터미널에 선택 내용을 클립보드로 전달합니다.
+                        self.application.output.write_raw(f"\x1b]52;c;{encoded}\x07")
+                        self.application.output.flush()
+                return result
+
+            control.mouse_handler = mouse_handler
+
         bindings = KeyBindings()
 
         @bindings.add("c-c")
@@ -73,26 +120,24 @@ class Chat:
 
         @bindings.add("escape")
         def focus_input(event: KeyPressEvent) -> None:
-            """입력창으로 돌아갑니다."""
+            """대화 선택을 해제하고 입력창을 유지합니다."""
+            self.transcript.buffer.exit_selection()
+            self.follow_output = True
             event.app.layout.focus(self.input)
-
-        @bindings.add("c-p")
-        def focus_history(event: KeyPressEvent) -> None:
-            """대화 영역으로 이동해 방향키로 이전 내용을 탐색합니다."""
-            event.app.layout.focus(self.transcript)
+            self.redraw()
 
         self.application: Application[None] = Application(
             layout=Layout(
                 HSplit(
                     [
                         self.transcript,
-                        Label(
-                            lambda: " 답변 생성 중…" if self.busy else "",
-                            style="class:hint",
-                        ),
+                        # Label(
+                        #     lambda: " 답변 생성 중…" if self.busy else "",
+                        #     style="class:hint",
+                        # ),
                         Frame(self.input),
                         Label(
-                            " Enter 전송 · Ctrl+P 대화 탐색 · Esc 입력 · Ctrl+C 종료",
+                            " Enter 전송 · 휠 스크롤 · ↑/↓ 입력 이력 · 드래그 복사 · Esc 선택 해제 · Ctrl+C 종료",
                             style="class:hint",
                         ),
                     ]
@@ -115,6 +160,8 @@ class Chat:
 
     def redraw(self) -> None:
         """현재 터미널 너비에 맞춰 누적 대화와 Markdown 답변을 표시합니다."""
+        if self.transcript.buffer.selection_state:
+            return
         width = max(10, self.application.output.get_size().columns - 2)
         lines: list[str] = []
         styles: list[str] = []
@@ -125,7 +172,7 @@ class Chat:
                 styles.extend([""] * gap)
             if role == "user":
                 for line in content.splitlines():
-                    text = f"▌ > {line}"
+                    text = f"▌ {line}"
                     lines.append(text + " " * max(0, width - get_cwidth(text)))
                     styles.append("class:question")
             else:
@@ -145,7 +192,7 @@ class Chat:
         text = "\n".join(lines) + "\n"
         cursor = (
             self.transcript.buffer.cursor_position
-            if self.application.layout.has_focus(self.transcript)
+            if not self.follow_output
             else len(text)
         )
         self.transcript.buffer.set_document(
@@ -162,6 +209,7 @@ class Chat:
         if self.busy or not message:
             return False
         self.busy = True
+        self.follow_output = True
         self.messages.extend([("user", message), ("assistant", "")])
         self.redraw()
         self.application.create_background_task(self.respond(message))
