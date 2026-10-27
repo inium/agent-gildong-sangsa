@@ -1,7 +1,7 @@
-from langchain.agents import create_agent
 from langchain_core.messages import HumanMessage
 from rich.console import Console
 from rich.markdown import Markdown
+from rich.live import Live
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import FileHistory
 from app.agents.supervisor_agent import SupervisorAgent
@@ -56,14 +56,30 @@ def main() -> None:
             answer("종료합니다. 이용해 주셔서 감사합니다.")
             break
 
-        result = supervisor.invoke(
-            {"messages": [HumanMessage(user_input)]}, config=config
-        )
+        console = Console()
+        console.print("\n길동이> ")
 
-        answer(
-            result["messages"][-1].content,
-            # references=collect_references(result["messages"]),
-        )
+        response_text = ""
+        with Live(
+            Markdown(response_text),
+            console=console,
+            refresh_per_second=10,
+            vertical_overflow="visible",
+        ) as live:
+            for chunk, metadata in supervisor.stream(
+                {"messages": [HumanMessage(user_input)]},
+                config=config,
+                stream_mode="messages",
+            ):
+                if (
+                    metadata.get("langgraph_node") == "model"
+                    and "supervisor_output" in metadata.get("tags", [])
+                    and chunk.text
+                ):
+                    response_text += chunk.text
+                    live.update(Markdown(response_text))
+
+        console.print("\n")
 
 
 if __name__ == "__main__":

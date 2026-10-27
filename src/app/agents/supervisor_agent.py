@@ -18,6 +18,7 @@ class SupervisorAgent:
             컴파일된 에이전트 그래프. 호출할 때마다 새 InMemorySaver를 연결합니다.
         """
         model = openai_model.get_model()
+        model.tags = [*(model.tags or []), "supervisor_output"]
 
         return create_agent(
             model=model,
